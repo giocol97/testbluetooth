@@ -21,22 +21,27 @@ import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
-import org.jetbrains.anko.AlertBuilder
-import org.jetbrains.anko.AlertDialogBuilder
 import java.util.*
 import java.util.UUID
 
 
+//useful android constants
 private const val ENABLE_BLUETOOTH_REQUEST_CODE = 1
 private const val LOCATION_PERMISSION_REQUEST_CODE = 2
+//the Client Characteristic Configuration Descriptor UUID is assigned by the Bluetooth foundation to Google and is the basis for all UUIDs used in Android (https://devzone.nordicsemi.com/f/nordic-q-a/24974/client-characteristic-configuration-descriptor-uuid)
 private  const val CCC_DESCRIPTOR_UUID = "00002902-0000-1000-8000-00805F9B34FB"
 
+//lidar constants
 private const val LIDAR_UUID="c273880d-114c-48b7-8ad2-30af640b3712"//TODO put real one
+private const val LIDAR_SERVICE_UUID="c273880d-114c-48b7-8ad2-30af640b3712"//TODO put real one
+private const val LIDAR_CHARACTERISTIC_UUID="c273880d-114c-48b7-8ad2-30af640b3712"//TODO put real one
 private const val GATT_MAX_MTU_SIZE = 517//TODO put real one
 
 
 class MainActivity : AppCompatActivity() {
 
+
+    //get bluetooth adapter and scanner
     private val bluetoothAdapter: BluetoothAdapter by lazy {
         val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         bluetoothManager.adapter
@@ -46,25 +51,26 @@ class MainActivity : AppCompatActivity() {
         bluetoothAdapter.bluetoothLeScanner
     }
 
+
+    //variable to check if fine location permission has been granted
     private val isLocationPermissionGranted
         get() = hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)
 
-    fun Context.hasPermission(permissionType: String): Boolean {
-        return ContextCompat.checkSelfPermission(this, permissionType) ==
-                PackageManager.PERMISSION_GRANTED
-    }
 
+    //build filter to only scan for the lidar device with known UUID
     private val filter = ScanFilter.Builder().setServiceUuid(
-        ParcelUuid.fromString(LIDAR_UUID.toString())
+        ParcelUuid.fromString(LIDAR_UUID)
     ).build()
 
     private val filters=listOf(filter)
 
+
+    //scan settings, SCAN_MODE_LOW_LATENCY is used since we need to only search once
     private val scanSettings = ScanSettings.Builder()
         .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
         .build()
 
-
+    //ui components
     private val scanButton: Button by lazy{
         findViewById(R.id.scan_button)
     }
@@ -72,30 +78,28 @@ class MainActivity : AppCompatActivity() {
         findViewById(R.id.scan_results_recycler_view)
     }
 
+    //variable to check if device is scanning, if set also change ui text
     private var isScanning = false
         set(value) {
             field = value
             runOnUiThread { scanButton.text = if (value) "Stop Scan" else "Start Scan" }
         }
 
-
+    //variables to hold and define how to interact with scan results
     private val scanResults = mutableListOf<ScanResult>()
     private val scanResultAdapter: ScanResultAdapter by lazy {
         ScanResultAdapter(scanResults) {result ->
-            // User tapped on a scan result
+            // User tapped on a scan result, stop scanning, log the devide address and connect to device
             if (isScanning) {
                 stopBleScan()
             }
-            /*with(result.device) {
-                Log.w("ScanResultAdapter", "Connecting to $address")
-                connectGatt(context, false, gattCallback)
-            }*/
+
             Log.w("ScanResultAdapter", "Connecting to ${result.device.address}")
             result.device.connectGatt(this, false, gattCallback)
-
         }
     }
 
+    //ScanCallback variable to save scan results in the ScanResultAdapter object and log errors
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
             val indexQuery = scanResults.indexOfFirst { it.device.address == result.device.address }
@@ -116,16 +120,24 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    //gatt service variable, is initialized on connection complete
     private lateinit var bluetoothGatt:BluetoothGatt
 
 
+    //BluetoothGattCallback object, it is our main way to interact with the gatt server
     private val gattCallback = object : BluetoothGattCallback() {
+
+
+        //when connection is established we get the BluetoothGatt object here
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
             val deviceAddress = gatt.device.address
 
+            //connected/disconnected from a device
             if (status == BluetoothGatt.GATT_SUCCESS) {
                 if (newState == BluetoothProfile.STATE_CONNECTED) {
                     Log.w("BluetoothGattCallback", "Successfully connected to $deviceAddress")
+
+                    //save the BluetoothGatt object, change MTU size and discover the services offered by the device
                     bluetoothGatt = gatt
                     bluetoothGatt.requestMtu(GATT_MAX_MTU_SIZE)
                     Handler(Looper.getMainLooper()).post {
@@ -135,24 +147,40 @@ class MainActivity : AppCompatActivity() {
                     Log.w("BluetoothGattCallback", "Successfully disconnected from $deviceAddress")
                     gatt.close()
                 }
-            } else {
+            } else {//error encountered in connecting
                 Log.w("BluetoothGattCallback", "Error $status encountered for $deviceAddress! Disconnecting...")
                 gatt.close()
             }
         }
 
+        //after connection is established we discover services to complete the setup
+        //we can also set up a notification for the lidar data characteristic here
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
             with(gatt) {
                 Log.w("BluetoothGattCallback", "Discovered ${services.size} services for ${device.address}")
                 printGattTable() // See implementation just above this section
                 // Consider connection setup as complete here
+
+                //set up notifications for the lidar characteristic so we get a callback every time the data updates
+                val lidarServiceUuid = UUID.fromString(LIDAR_SERVICE_UUID)
+                val lidarDataCharUuid = UUID.fromString(LIDAR_CHARACTERISTIC_UUID)
+                val lidarDataChar = bluetoothGatt.getService(lidarServiceUuid)?.getCharacteristic(lidarDataCharUuid)
+                if (lidarDataChar != null) {
+                    enableNotifications(lidarDataChar)
+                }else{
+                    Log.e("BluetoothGattCallback","Error: Lidar characteristic not found")
+                }
+
+
             }
         }
 
+        //callback happens after we change the MTU size after we established the connection in onConnectionStateChange
         override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
             Log.w("BluetoothGattCallback", "ATT MTU changed to $mtu, success: ${status == BluetoothGatt.GATT_SUCCESS}")
         }
 
+        //after we make a read operation this callback will be called with the data requested in characteristic.value or an error
         override fun onCharacteristicRead(
             gatt: BluetoothGatt,
             characteristic: BluetoothGattCharacteristic,
@@ -162,6 +190,8 @@ class MainActivity : AppCompatActivity() {
                 when (status) {
                     BluetoothGatt.GATT_SUCCESS -> {
                         Log.i("BluetoothGattCallback", "Read characteristic $uuid:\n${value.toHexString()}")
+
+                        //we parse the raw data received from the server
                         val lidarData=parseLidarData(value)
                     }
                     BluetoothGatt.GATT_READ_NOT_PERMITTED -> {
@@ -174,6 +204,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        //this call back tells us the result of a write operation on the server
         override fun onCharacteristicWrite(
             gatt: BluetoothGatt,
             characteristic: BluetoothGattCharacteristic,
@@ -197,23 +228,37 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        //this callback happens after we set up a notification for a characteristic and the characteristic is updated by the server
+        //if the characteristic is the lidar data we can then attempt to read it and we will receive the data on the onCharacteristicRead callback
         override fun onCharacteristicChanged(
             gatt: BluetoothGatt,
             characteristic: BluetoothGattCharacteristic
         ) {
             with(characteristic) {
                 Log.i("BluetoothGattCallback", "Characteristic $uuid changed | value: ${value.toHexString()}")
+
+                if(uuid.toString()==LIDAR_CHARACTERISTIC_UUID){
+                    readRawLidarData()
+                }
             }
         }
     }
 
-    fun writeDescriptor(descriptor: BluetoothGattDescriptor, payload: ByteArray) {
+    //check if we have a certain permission
+    private fun Context.hasPermission(permissionType: String): Boolean {
+        return ContextCompat.checkSelfPermission(this, permissionType) ==
+                PackageManager.PERMISSION_GRANTED
+    }
+
+    //write on a characteristic descriptor on the server, used in setting up notifications
+    private fun writeDescriptor(descriptor: BluetoothGattDescriptor, payload: ByteArray) {
         bluetoothGatt.let { gatt ->
             descriptor.value = payload
             gatt.writeDescriptor(descriptor)
         }
     }
 
+    //this function enables notifications for the BluetoothGattCharacteristic passed as input
     fun enableNotifications(characteristic: BluetoothGattCharacteristic) {
         val cccdUuid = UUID.fromString(CCC_DESCRIPTOR_UUID)
         val payload = when {
@@ -226,7 +271,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         characteristic.getDescriptor(cccdUuid)?.let { cccDescriptor ->
-            if (bluetoothGatt?.setCharacteristicNotification(characteristic, true) == false) {
+            if (bluetoothGatt.setCharacteristicNotification(characteristic, true) == false) {
                 Log.e("ConnectionManager", "setCharacteristicNotification failed for ${characteristic.uuid}")
                 return
             }
@@ -234,6 +279,7 @@ class MainActivity : AppCompatActivity() {
         } ?: Log.e("ConnectionManager", "${characteristic.uuid} doesn't contain the CCC descriptor!")
     }
 
+    //this function disables notifications for the BluetoothGattCharacteristic passed as input
     fun disableNotifications(characteristic: BluetoothGattCharacteristic) {
         if (!characteristic.isNotifiable() && !characteristic.isIndicatable()) {
             Log.e("ConnectionManager", "${characteristic.uuid} doesn't support indications/notifications")
@@ -242,7 +288,7 @@ class MainActivity : AppCompatActivity() {
 
         val cccdUuid = UUID.fromString(CCC_DESCRIPTOR_UUID)
         characteristic.getDescriptor(cccdUuid)?.let { cccDescriptor ->
-            if (bluetoothGatt?.setCharacteristicNotification(characteristic, false) == false) {
+            if (bluetoothGatt.setCharacteristicNotification(characteristic, false) == false) {
                 Log.e("ConnectionManager", "setCharacteristicNotification failed for ${characteristic.uuid}")
                 return
             }
@@ -250,14 +296,12 @@ class MainActivity : AppCompatActivity() {
         } ?: Log.e("ConnectionManager", "${characteristic.uuid} doesn't contain the CCC descriptor!")
     }
 
-    private fun parseLidarData(data:ByteArray):String{
-        return data.toHexString()
-    }
-
+    //transforms a ByteArray object in a string, mostly for logging purposes
     fun ByteArray.toHexString(): String =
         joinToString(separator = " ", prefix = "0x") { String.format("%02X", it) }
 
 
+    //log discovered services in a device for debug
     private fun BluetoothGatt.printGattTable() {
         if (services.isEmpty()) {
             Log.i("printGattTable", "No service and characteristic available, call discoverServices() first?")
@@ -274,35 +318,43 @@ class MainActivity : AppCompatActivity() {
     }
 
 
-    fun BluetoothGattCharacteristic.isReadable(): Boolean =
+    //these small functions are used to simplify checking characteristic properties using containsProperty
+    private fun BluetoothGattCharacteristic.isReadable(): Boolean =
         containsProperty(BluetoothGattCharacteristic.PROPERTY_READ)
 
-    fun BluetoothGattCharacteristic.isWritable(): Boolean =
+    private fun BluetoothGattCharacteristic.isWritable(): Boolean =
     containsProperty(BluetoothGattCharacteristic.PROPERTY_WRITE)
 
-    fun BluetoothGattCharacteristic.isWritableWithoutResponse(): Boolean =
+    private fun BluetoothGattCharacteristic.isWritableWithoutResponse(): Boolean =
         containsProperty(BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE)
 
-    fun BluetoothGattCharacteristic.isIndicatable(): Boolean =
+    private fun BluetoothGattCharacteristic.isIndicatable(): Boolean =
         containsProperty(BluetoothGattCharacteristic.PROPERTY_INDICATE)
 
-    fun BluetoothGattCharacteristic.isNotifiable(): Boolean =
+    private fun BluetoothGattCharacteristic.isNotifiable(): Boolean =
         containsProperty(BluetoothGattCharacteristic.PROPERTY_NOTIFY)
 
-    fun BluetoothGattCharacteristic.containsProperty(property: Int): Boolean {
+    private fun BluetoothGattCharacteristic.containsProperty(property: Int): Boolean {
         return properties and property != 0
     }
 
-    private fun readBatteryLevel() {
-        val batteryServiceUuid = UUID.fromString("0000180f-0000-1000-8000-00805f9b34fb")
-        val batteryLevelCharUuid = UUID.fromString("00002a19-0000-1000-8000-00805f9b34fb")
-        val batteryLevelChar = bluetoothGatt
-            .getService(batteryServiceUuid)?.getCharacteristic(batteryLevelCharUuid)
-        if (batteryLevelChar?.isReadable() == true) {
-            bluetoothGatt.readCharacteristic(batteryLevelChar)
+    //using the UUIDs provided in the constants read the lidar characteristic
+    private fun readRawLidarData(){
+        val lidarServiceUuid = UUID.fromString(LIDAR_SERVICE_UUID)
+        val lidarDataCharUuid = UUID.fromString(LIDAR_CHARACTERISTIC_UUID)
+        val lidarDataChar = bluetoothGatt.getService(lidarServiceUuid)?.getCharacteristic(lidarDataCharUuid)
+        if (lidarDataChar?.isReadable() == true) {
+            bluetoothGatt.readCharacteristic(lidarDataChar)
         }
     }
 
+    //TODO parse the lidar data in the desired format
+    private fun parseLidarData(data:ByteArray):String{
+        return data.toHexString()
+    }
+
+
+    //function to write data in ByteArray format in a characteristic on the server
     fun writeCharacteristic(characteristic: BluetoothGattCharacteristic, payload: ByteArray) {
         val writeType = when {
             characteristic.isWritable() -> BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
@@ -319,11 +371,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-
+        //setup listener on the scan button and the recycler view
         scanButton.setOnClickListener {
             if (isScanning) {
                 stopBleScan()
@@ -337,17 +390,22 @@ class MainActivity : AppCompatActivity() {
 
         override fun onResume(){
             super.onResume()
+
+            //after create completes or when the app is reopened we check if bluetooth is enabled and prompt to enable it
             if (!bluetoothAdapter.isEnabled) {
                 promptEnableBluetooth()
             }
         }
 
+    //if bluetooth is not enabled prompt on the screen to enable it
     private fun promptEnableBluetooth() {
         if (!bluetoothAdapter.isEnabled) {
             val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
             startActivityForResult(enableBtIntent, ENABLE_BLUETOOTH_REQUEST_CODE)
         }
     }
+
+    //if user did not enable the bluetooth in the prompt show it again
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         when (requestCode) {
@@ -359,6 +417,8 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+
+    //clear the previous scan results and start a new scan
     private fun startBleScan() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !isLocationPermissionGranted) {
             requestLocationPermission()
@@ -372,11 +432,13 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    //stop an ongoing scan
     private fun stopBleScan() {
         bleScanner.stopScan(scanCallback)
         isScanning = false
     }
 
+    //to scan for devices the fine location permission is required, prompt the user to give location permission
     private fun requestLocationPermission() {
         if (isLocationPermissionGranted) {
             return
@@ -396,6 +458,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    //if user did not give location permission in the prompt show it again else start the scan
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
@@ -413,10 +476,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    //request a specified permission
     private fun Activity.requestPermission(permission: String, requestCode: Int) {
         ActivityCompat.requestPermissions(this, arrayOf(permission), requestCode)
     }
 
+    //set up the recycler view using the ScanResultAdapter class
     private fun setupRecyclerView() {
         scanResultsRecyclerView.apply {
             adapter = scanResultAdapter
