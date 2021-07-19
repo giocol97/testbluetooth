@@ -21,6 +21,7 @@ import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
+import kotlin.collections.*
 import java.util.*
 import java.util.UUID
 
@@ -36,6 +37,10 @@ private const val LIDAR_UUID="c273880d-114c-48b7-8ad2-30af640b3712"//TODO put re
 private const val LIDAR_SERVICE_UUID="c273880d-114c-48b7-8ad2-30af640b3712"//TODO put real one
 private const val LIDAR_CHARACTERISTIC_UUID="c273880d-114c-48b7-8ad2-30af640b3712"//TODO put real one
 private const val GATT_MAX_MTU_SIZE = 517//TODO put real one
+
+//lidar data packets constants
+private const val END_LINE=0x0A // '\n'
+private const val DATA_SEPARATOR=0x3B //';'
 
 
 class MainActivity : AppCompatActivity() {
@@ -191,7 +196,7 @@ class MainActivity : AppCompatActivity() {
                     BluetoothGatt.GATT_SUCCESS -> {
                         Log.i("BluetoothGattCallback", "Read characteristic $uuid:\n${value.toHexString()}")
 
-                        //we parse the raw data received from the server
+                        //we parse the raw data received from the server into a list of LidarPoints
                         val lidarData=parseLidarData(value)
                     }
                     BluetoothGatt.GATT_READ_NOT_PERMITTED -> {
@@ -348,11 +353,57 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    //TODO parse the lidar data in the desired format
-    private fun parseLidarData(data:ByteArray):String{
-        return data.toHexString()
+    //parse the lidar data in the desired format, returns null if the header is wrong
+    private fun parseLidarData(data:ByteArray):List<LidarPoint>?{
+
+        if(data[0]!='H'.toByte()){
+            Log.e("parseLidarDataError","Header line does not contain control character")
+            return null
+        }
+
+        val temp=mutableListOf<Char>()
+        var i=2
+
+        do{
+            temp.add(data[i].toChar())
+            i++
+        }while(data[i]!=END_LINE.toByte())
+
+        var angle=temp.joinToString("").toInt()
+        temp.clear()
+        i++
+
+        val list=mutableListOf<LidarPoint>()
+        var tempIntensity=0
+        var tempDistance=0
+
+        while(i<data.size){
+            do{
+                temp.add(data[i].toChar())
+                i++
+            }while(data[i]!=DATA_SEPARATOR.toByte())
+
+            tempDistance=temp.joinToString("").toInt()
+            temp.clear()
+            i++
+
+            do{
+                temp.add(data[i].toChar())
+                i++
+            }while(i!=data.size && data[i]!=END_LINE.toByte())
+
+            tempIntensity=temp.joinToString("").toInt()
+            temp.clear()
+            i++
+
+            list.add(LidarPoint(angle++,tempDistance,tempIntensity))
+        }
+
+        return list
     }
 
+    //class that contains a single lidar data point
+    data class LidarPoint(val angle: Int,val distance: Int, val intensity: Int)
 
     //function to write data in ByteArray format in a characteristic on the server
     fun writeCharacteristic(characteristic: BluetoothGattCharacteristic, payload: ByteArray) {
@@ -385,7 +436,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
         setupRecyclerView()
-
     }
 
         override fun onResume(){
