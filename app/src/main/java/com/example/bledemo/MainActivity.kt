@@ -11,19 +11,32 @@ import android.content.Context
 import android.content.DialogInterface
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
 import android.os.*
 import androidx.appcompat.app.AppCompatActivity
 import android.util.Log
+import android.view.SurfaceHolder
+import android.view.SurfaceView
+import android.view.View
+import android.view.View.GONE
+import android.view.View.VISIBLE
 import android.widget.Button
+import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AlertDialog
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
+import kotlinx.android.synthetic.main.activity_radar.*
 import kotlin.collections.*
 import java.util.*
 import java.util.UUID
+import kotlin.math.cos
+import kotlin.math.sin
 
 
 //useful android constants
@@ -42,6 +55,8 @@ private const val GATT_MAX_MTU_SIZE = 517//TODO put real one
 private const val END_LINE=0x0A // '\n'
 private const val DATA_SEPARATOR=0x3B //';'
 
+private const val MAX_DISTANCE=5000
+private const val ANGLE_OFFSET=0
 
 class MainActivity : AppCompatActivity() {
 
@@ -79,6 +94,15 @@ class MainActivity : AppCompatActivity() {
     private val scanButton: Button by lazy{
         findViewById(R.id.scan_button)
     }
+
+    private val radarButton: Button by lazy{
+        findViewById(R.id.radar_button)
+    }
+
+    private val radarView: SurfaceView by lazy{
+        findViewById(R.id.radar_view)
+    }
+
     private val scanResultsRecyclerView:RecyclerView by lazy{
         findViewById(R.id.scan_results_recycler_view)
     }
@@ -198,6 +222,12 @@ class MainActivity : AppCompatActivity() {
 
                         //we parse the raw data received from the server into a list of LidarPoints
                         val lidarData=parseLidarData(value)
+
+                        if (lidarData != null) {
+                            drawLidarData(lidarData)
+                        }else{
+                            Log.e("LidarDataError","Lidar data is null")
+                        }
                     }
                     BluetoothGatt.GATT_READ_NOT_PERMITTED -> {
                         Log.e("BluetoothGattCallback", "Read not permitted for $uuid!")
@@ -422,6 +452,66 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun openRadarView(){
+        if(radarView.visibility==VISIBLE){
+            radarView.visibility=GONE
+        }else{
+            radarView.visibility=VISIBLE
+        }
+    }
+
+    private fun drawLidarData(lidarData:List<LidarPoint>?){
+        //code is inside synchronized block to avoid trying to draw on it twice
+        synchronized(radarView.holder){
+            //get the canvas from the radarView surface
+            val canvas: Canvas =radarView.holder.lockCanvas()
+            val green=Paint()
+            green.color=Color.GREEN
+            var x:Float
+            var y:Float
+
+            canvas.drawColor(Color.BLACK)
+
+            if (lidarData != null) {
+                //draw each point on the canvas
+                lidarData.forEach{ point->
+                    //don't draw null points
+                    if(point.distance!=0 && point.intensity!=0){
+                        //transform polar->cartesian coordinates
+                        //MAX_DISTANCE defines a saturation point for distance representation
+                        //ANGLE_OFFSET defines where the angles start from, 0 is x axis
+                        x=(min(point.distance, MAX_DISTANCE)*cos((point.angle + ANGLE_OFFSET).toDouble())).toFloat()
+                        y=(min(point.distance,MAX_DISTANCE)*sin((point.angle+ ANGLE_OFFSET).toDouble())).toFloat()
+
+                        //fit in the canvas
+                        x=x*(canvas.width/2)/MAX_DISTANCE
+                        y=y*(canvas.height/2)/MAX_DISTANCE
+
+                        //center in the middle of the canvas
+                        x+=(canvas.width/2)
+                        y+=(canvas.height/2)
+
+                        canvas.drawCircle(x,y,2f, green)
+                    }
+                }
+            }else{
+                //if there is no lidar data draw 4 circles as an example
+                canvas.drawCircle(100f,100f,5f, green)
+                canvas.drawCircle(400f,100f,5f, green)
+                canvas.drawCircle(100f,400f,5f, green)
+                canvas.drawCircle(400f,400f,5f, green)
+            }
+
+            //release the canvas
+            radarView.holder.unlockCanvasAndPost(canvas)
+        }
+    }
+
+    //Android API N is needed for min function...
+    private fun min(a:Int,b:Int): Int {
+        return if(a>b) b else a
+    }
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -435,6 +525,27 @@ class MainActivity : AppCompatActivity() {
                 startBleScan()
             }
         }
+
+        //when the view is created draw the default example data on it
+        radarView.holder.addCallback(object : SurfaceHolder.Callback {
+            override fun surfaceDestroyed(holder: SurfaceHolder) = Unit
+
+            override fun surfaceChanged(
+                holder: SurfaceHolder,
+                format: Int,
+                width: Int,
+                height: Int) = Unit
+
+            @RequiresApi(Build.VERSION_CODES.O)
+            override fun surfaceCreated(holder: SurfaceHolder) {
+                drawLidarData(null)
+            }
+        })
+
+        radarButton.setOnClickListener{
+            openRadarView()
+        }
+
         setupRecyclerView()
     }
 
