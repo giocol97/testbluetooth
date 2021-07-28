@@ -31,7 +31,6 @@ import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
-import kotlinx.android.synthetic.main.activity_radar.*
 import kotlin.collections.*
 import java.util.*
 import java.util.UUID
@@ -43,12 +42,12 @@ import kotlin.math.sin
 private const val ENABLE_BLUETOOTH_REQUEST_CODE = 1
 private const val LOCATION_PERMISSION_REQUEST_CODE = 2
 //the Client Characteristic Configuration Descriptor UUID is assigned by the Bluetooth foundation to Google and is the basis for all UUIDs used in Android (https://devzone.nordicsemi.com/f/nordic-q-a/24974/client-characteristic-configuration-descriptor-uuid)
-private  const val CCC_DESCRIPTOR_UUID = "00002902-0000-1000-8000-00805F9B34FB"
+private  const val CCC_DESCRIPTOR_UUID = "00002902-0000-1000-8000-00805f9b34fb"
 
 //lidar constants
-private const val LIDAR_UUID="c273880d-114c-48b7-8ad2-30af640b3712"//TODO put real one
-private const val LIDAR_SERVICE_UUID="c273880d-114c-48b7-8ad2-30af640b3712"//TODO put real one
-private const val LIDAR_CHARACTERISTIC_UUID="c273880d-114c-48b7-8ad2-30af640b3712"//TODO put real one
+private const val LIDAR_UUID="7da5e347-cbd3-42bb-b813-5a4585d5e44a"//TODO put real one
+private const val LIDAR_SERVICE_UUID="7da5e347-cbd3-42bb-b813-5a4585d5e44a"//TODO put real one
+private const val LIDAR_CHARACTERISTIC_UUID="eec3f9dd-cf13-4ed7-89d7-49592be711b2"//TODO put real one
 private const val GATT_MAX_MTU_SIZE = 517//TODO put real one
 
 //lidar data packets constants
@@ -169,9 +168,9 @@ class MainActivity : AppCompatActivity() {
                     //save the BluetoothGatt object, change MTU size and discover the services offered by the device
                     bluetoothGatt = gatt
                     bluetoothGatt.requestMtu(GATT_MAX_MTU_SIZE)
-                    Handler(Looper.getMainLooper()).post {
-                        bluetoothGatt.discoverServices()
-                    }
+//                    Handler(Looper.getMainLooper()).post {
+//                        bluetoothGatt.discoverServices()
+//                    }
                 } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                     Log.w("BluetoothGattCallback", "Successfully disconnected from $deviceAddress")
                     gatt.close()
@@ -207,6 +206,10 @@ class MainActivity : AppCompatActivity() {
         //callback happens after we change the MTU size after we established the connection in onConnectionStateChange
         override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
             Log.w("BluetoothGattCallback", "ATT MTU changed to $mtu, success: ${status == BluetoothGatt.GATT_SUCCESS}")
+            Handler(Looper.getMainLooper()).post {
+                bluetoothGatt.discoverServices()
+            }
+
         }
 
         //after we make a read operation this callback will be called with the data requested in characteristic.value or an error
@@ -288,7 +291,7 @@ class MainActivity : AppCompatActivity() {
     //write on a characteristic descriptor on the server, used in setting up notifications
     private fun writeDescriptor(descriptor: BluetoothGattDescriptor, payload: ByteArray) {
         bluetoothGatt.let { gatt ->
-            descriptor.value = payload
+            descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
             gatt.writeDescriptor(descriptor)
         }
     }
@@ -426,6 +429,8 @@ class MainActivity : AppCompatActivity() {
             temp.clear()
             i++
 
+            Log.w("point", "" + LidarPoint(angle++,tempDistance,tempIntensity))
+
             list.add(LidarPoint(angle++,tempDistance,tempIntensity))
         }
 
@@ -480,8 +485,9 @@ class MainActivity : AppCompatActivity() {
                         //transform polar->cartesian coordinates
                         //MAX_DISTANCE defines a saturation point for distance representation
                         //ANGLE_OFFSET defines where the angles start from, 0 is x axis
-                        x=(min(point.distance, MAX_DISTANCE)*cos((point.angle + ANGLE_OFFSET).toDouble())).toFloat()
-                        y=(min(point.distance,MAX_DISTANCE)*sin((point.angle+ ANGLE_OFFSET).toDouble())).toFloat()
+                        var angleRads = (point.angle + ANGLE_OFFSET) * Math.PI / 180;
+                        x=(min(point.distance, MAX_DISTANCE)*cos(angleRads.toDouble())).toFloat()
+                        y=(min(point.distance,MAX_DISTANCE)*sin(angleRads.toDouble())).toFloat()
 
                         //fit in the canvas
                         x=x*(canvas.width/2)/MAX_DISTANCE
@@ -587,8 +593,8 @@ class MainActivity : AppCompatActivity() {
         else {
             scanResults.clear()
             scanResultAdapter.notifyDataSetChanged()
-            //bleScanner.startScan(filters, scanSettings, scanCallback)
-            bleScanner.startScan(null, scanSettings, scanCallback)
+            bleScanner.startScan(filters, scanSettings, scanCallback)
+            //bleScanner.startScan(null, scanSettings, scanCallback)
             isScanning = true
         }
     }
