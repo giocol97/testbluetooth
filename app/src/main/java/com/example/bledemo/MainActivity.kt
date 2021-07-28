@@ -127,6 +127,8 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    val lidarPointList=mutableListOf<LidarPoint>()
+
     //ScanCallback variable to save scan results in the ScanResultAdapter object and log errors
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
@@ -224,10 +226,10 @@ class MainActivity : AppCompatActivity() {
                         Log.i("BluetoothGattCallback", "Read characteristic $uuid:\n${value.toHexString()}")
 
                         //we parse the raw data received from the server into a list of LidarPoints
-                        val lidarData=parseLidarData(value)
+                        parseLidarData(value)
 
-                        if (lidarData != null) {
-                            drawLidarData(lidarData)
+                        if (!lidarPointList.isNullOrEmpty()) {
+                            drawLidarData()
                         }else{
                             Log.e("LidarDataError","Lidar data is null")
                         }
@@ -387,11 +389,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     //parse the lidar data in the desired format, returns null if the header is wrong
-    private fun parseLidarData(data:ByteArray):List<LidarPoint>?{
+    private fun parseLidarData(data:ByteArray){
 
         if(data[0]!='H'.toByte()){
             Log.e("parseLidarDataError","Header line does not contain control character")
-            return null
+            return
         }
 
         val temp=mutableListOf<Char>()
@@ -406,7 +408,6 @@ class MainActivity : AppCompatActivity() {
         temp.clear()
         i++
 
-        val list=mutableListOf<LidarPoint>()
         var tempIntensity=0
         var tempDistance=0
 
@@ -429,12 +430,22 @@ class MainActivity : AppCompatActivity() {
             temp.clear()
             i++
 
-            Log.w("point", "" + LidarPoint(angle++,tempDistance,tempIntensity))
-
-            list.add(LidarPoint(angle++,tempDistance,tempIntensity))
+            addToListNoDuplicates(LidarPoint(angle++,tempDistance,tempIntensity))
         }
+    }
 
-        return list
+    private fun addToListNoDuplicates(point:LidarPoint){
+        var found=false
+        for(i in lidarPointList.indices){
+            if(lidarPointList[i].angle==point.angle){
+                found=true
+                lidarPointList[i]=point
+                break
+            }
+        }
+        if(!found){
+            lidarPointList.add(point)
+        }
     }
 
     //class that contains a single lidar data point
@@ -465,7 +476,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun drawLidarData(lidarData:List<LidarPoint>?){
+    private fun drawLidarData(){
         //code is inside synchronized block to avoid trying to draw on it twice
         synchronized(radarView.holder){
             //get the canvas from the radarView surface
@@ -477,15 +488,15 @@ class MainActivity : AppCompatActivity() {
 
             canvas.drawColor(Color.BLACK)
 
-            if (lidarData != null) {
+            if (!lidarPointList.isNullOrEmpty()) {
                 //draw each point on the canvas
-                lidarData.forEach{ point->
+                lidarPointList.forEach{ point->
                     //don't draw null points
                     if(point.distance!=0 && point.intensity!=0){
                         //transform polar->cartesian coordinates
                         //MAX_DISTANCE defines a saturation point for distance representation
                         //ANGLE_OFFSET defines where the angles start from, 0 is x axis
-                        var angleRads = (point.angle + ANGLE_OFFSET) * Math.PI / 180;
+                        val angleRads = (point.angle + ANGLE_OFFSET) * Math.PI / 180;
                         x=(min(point.distance, MAX_DISTANCE)*cos(angleRads.toDouble())).toFloat()
                         y=(min(point.distance,MAX_DISTANCE)*sin(angleRads.toDouble())).toFloat()
 
@@ -544,7 +555,7 @@ class MainActivity : AppCompatActivity() {
 
             @RequiresApi(Build.VERSION_CODES.O)
             override fun surfaceCreated(holder: SurfaceHolder) {
-                drawLidarData(null)
+                drawLidarData()
             }
         })
 
