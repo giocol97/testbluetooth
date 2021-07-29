@@ -55,7 +55,7 @@ private const val END_LINE=0x0A // '\n'
 private const val DATA_SEPARATOR=0x3B //';'
 
 private const val MAX_DISTANCE=5000
-private const val ANGLE_OFFSET=0
+private const val ANGLE_OFFSET=90
 
 class MainActivity : AppCompatActivity() {
 
@@ -170,9 +170,6 @@ class MainActivity : AppCompatActivity() {
                     //save the BluetoothGatt object, change MTU size and discover the services offered by the device
                     bluetoothGatt = gatt
                     bluetoothGatt.requestMtu(GATT_MAX_MTU_SIZE)
-//                    Handler(Looper.getMainLooper()).post {
-//                        bluetoothGatt.discoverServices()
-//                    }
                 } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                     Log.w("BluetoothGattCallback", "Successfully disconnected from $deviceAddress")
                     gatt.close()
@@ -223,7 +220,8 @@ class MainActivity : AppCompatActivity() {
             with(characteristic) {
                 when (status) {
                     BluetoothGatt.GATT_SUCCESS -> {
-                        Log.i("BluetoothGattCallback", "Read characteristic $uuid:\n${value.toHexString()}")
+                        //Log.i("BluetoothGattCallback", "Read characteristic $uuid:\n${value.toHexString()}")
+                        Log.i("BluetoothGattCallback", "Read characteristic")
 
                         //we parse the raw data received from the server into a list of LidarPoints
                         parseLidarData(value)
@@ -275,7 +273,8 @@ class MainActivity : AppCompatActivity() {
             characteristic: BluetoothGattCharacteristic
         ) {
             with(characteristic) {
-                Log.i("BluetoothGattCallback", "Characteristic $uuid changed | value: ${value.toHexString()}")
+//                Log.i("BluetoothGattCallback", "Characteristic $uuid changed | value: ${value.toHexString()}")
+                Log.i("BluetoothGattCallback", "Characteristic changed")
 
                 if(uuid.toString()==LIDAR_CHARACTERISTIC_UUID){
                     readRawLidarData()

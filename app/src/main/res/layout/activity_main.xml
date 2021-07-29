@@ -37,8 +37,8 @@
 
         <SurfaceView
             android:id="@+id/radar_view"
-            android:layout_width="500px"
-            android:layout_height="500px"
+            android:layout_width="1000px"
+            android:layout_height="1000px"
             android:layout_marginTop="16dp"
             android:layout_weight="1"
             android:visibility="gone" />
