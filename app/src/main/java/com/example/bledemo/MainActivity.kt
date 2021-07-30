@@ -128,6 +128,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     val lidarPointList=mutableListOf<LidarPoint>()
+    var currentDirection=0
+    var currentSpeed=0f
+
 
     //ScanCallback variable to save scan results in the ScanResultAdapter object and log errors
     private val scanCallback = object : ScanCallback() {
@@ -390,6 +393,8 @@ class MainActivity : AppCompatActivity() {
     //parse the lidar data in the desired format, returns null if the header is wrong
     private fun parseLidarData(data:ByteArray){
 
+
+        //check if header char is correct
         if(data[0]!='H'.toByte()){
             Log.e("parseLidarDataError","Header line does not contain control character")
             return
@@ -398,12 +403,34 @@ class MainActivity : AppCompatActivity() {
         val temp=mutableListOf<Char>()
         var i=2
 
+        //get starting angle for packet
+        do{
+            temp.add(data[i].toChar())
+            i++
+        }while(data[i]!=DATA_SEPARATOR.toByte())
+
+        var angle=temp.joinToString("").toInt()
+        temp.clear()
+        i++
+
+        //get current direction
+        do{
+            temp.add(data[i].toChar())
+            i++
+        }while(data[i]!=DATA_SEPARATOR.toByte())
+
+        currentDirection=temp.joinToString("").toInt()
+        temp.clear()
+        i++
+
+        //get current speed
         do{
             temp.add(data[i].toChar())
             i++
         }while(data[i]!=END_LINE.toByte())
 
-        var angle=temp.joinToString("").toInt()
+        currentSpeed=temp.joinToString("").toFloat()
+        currentSpeed/=10f
         temp.clear()
         i++
 
