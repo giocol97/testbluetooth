@@ -24,6 +24,7 @@ import android.view.View
 import android.view.View.GONE
 import android.view.View.VISIBLE
 import android.widget.Button
+import android.widget.TextView
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AlertDialog
 import androidx.core.app.ActivityCompat
@@ -104,6 +105,14 @@ class MainActivity : AppCompatActivity() {
 
     private val scanResultsRecyclerView:RecyclerView by lazy{
         findViewById(R.id.scan_results_recycler_view)
+    }
+
+    private val speedView: TextView by lazy{
+        findViewById(R.id.speed_view)
+    }
+
+    private val directionView: TextView by lazy{
+        findViewById(R.id.direction_view)
     }
 
     //variable to check if device is scanning, if set also change ui text
@@ -433,6 +442,10 @@ class MainActivity : AppCompatActivity() {
         currentSpeed/=10f
         temp.clear()
         i++
+
+
+       speedView.text= "Speed: $currentSpeed"
+       directionView.text= "Direction: $currentDirection"
 
         var tempIntensity=0
         var tempDistance=0
