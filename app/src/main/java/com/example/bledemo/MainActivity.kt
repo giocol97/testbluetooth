@@ -56,7 +56,7 @@ private const val END_LINE=0x0A // '\n'
 private const val DATA_SEPARATOR=0x3B //';'
 
 private const val MAX_DISTANCE=5000
-private const val ANGLE_OFFSET=90
+private const val ANGLE_OFFSET=180
 
 class MainActivity : AppCompatActivity() {
 
@@ -126,7 +126,7 @@ class MainActivity : AppCompatActivity() {
     private val scanResults = mutableListOf<ScanResult>()
     private val scanResultAdapter: ScanResultAdapter by lazy {
         ScanResultAdapter(scanResults) {result ->
-            // User tapped on a scan result, stop scanning, log the devide address and connect to device
+            // User tapped on a scan result, stop scanning, log the device address and connect to device
             if (isScanning) {
                 stopBleScan()
             }
@@ -141,9 +141,23 @@ class MainActivity : AppCompatActivity() {
     var currentSpeed=0f
 
 
+    private fun connectFunction(result:ScanResult,gattCallback: BluetoothGattCallback){
+        if (isScanning) {
+            stopBleScan()
+        }
+
+        Log.w("ScanResultAdapter", "Connecting to ${result.device.address}")
+        result.device.connectGatt(this, false, gattCallback)
+    }
+
     //ScanCallback variable to save scan results in the ScanResultAdapter object and log errors
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
+
+            //connect in another function to obtain context
+            connectFunction(result,gattCallback)
+
+            /* disabled
             val indexQuery = scanResults.indexOfFirst { it.device.address == result.device.address }
             if (indexQuery != -1) { // A scan result already exists with the same address
                 scanResults[indexQuery] = result
@@ -154,7 +168,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 scanResults.add(result)
                 scanResultAdapter.notifyItemInserted(scanResults.size - 1)
-            }
+            }*/
         }
 
         override fun onScanFailed(errorCode: Int) {
@@ -450,7 +464,7 @@ class MainActivity : AppCompatActivity() {
         var tempIntensity=0
         var tempDistance=0
 
-        while(i<data.size){
+        while(i<data.size){//TODO check arrayoutofbounds
             do{
                 temp.add(data[i].toChar())
                 i++
@@ -515,6 +529,27 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun polarToCanvas(distance:Int,angle:Int,width:Int,height:Int):Pair<Float,Float>{
+        //transform polar->cartesian coordinates
+        //MAX_DISTANCE defines a saturation point for distance representation
+        //ANGLE_OFFSET defines where the angles start from, 0 is x axis
+        val angleRads = (angle + ANGLE_OFFSET) * Math.PI / 180;
+
+        var x=(min(distance, MAX_DISTANCE)*cos(angleRads)).toFloat()
+        var y=(min(distance,MAX_DISTANCE)*sin(angleRads)).toFloat()
+
+        //fit in the canvas
+        x=x*(width/2)/MAX_DISTANCE
+        y=y*(height/2)/MAX_DISTANCE
+
+        //center in the middle of the canvas
+        x+=(width/2)
+        y+=(height/2)
+
+        return Pair(x,y)
+    }
+
+
     private fun drawLidarData(){
         //code is inside synchronized block to avoid trying to draw on it twice
         synchronized(radarView.holder){
@@ -522,8 +557,7 @@ class MainActivity : AppCompatActivity() {
             val canvas: Canvas =radarView.holder.lockCanvas()
             val green=Paint()
             green.color=Color.GREEN
-            var x:Float
-            var y:Float
+            var coords=Pair(0f,0f)
 
             canvas.drawColor(Color.BLACK)
 
@@ -532,24 +566,20 @@ class MainActivity : AppCompatActivity() {
                 lidarPointList.forEach{ point->
                     //don't draw null points
                     if(point.distance!=0 && point.intensity!=0){
-                        //transform polar->cartesian coordinates
-                        //MAX_DISTANCE defines a saturation point for distance representation
-                        //ANGLE_OFFSET defines where the angles start from, 0 is x axis
-                        val angleRads = (point.angle + ANGLE_OFFSET) * Math.PI / 180;
-                        x=(min(point.distance, MAX_DISTANCE)*cos(angleRads.toDouble())).toFloat()
-                        y=(min(point.distance,MAX_DISTANCE)*sin(angleRads.toDouble())).toFloat()
 
-                        //fit in the canvas
-                        x=x*(canvas.width/2)/MAX_DISTANCE
-                        y=y*(canvas.height/2)/MAX_DISTANCE
+                        coords=polarToCanvas(point.distance,point.angle,canvas.width,canvas.height)
 
-                        //center in the middle of the canvas
-                        x+=(canvas.width/2)
-                        y+=(canvas.height/2)
-
-                        canvas.drawCircle(x,y,2f, green)
+                        canvas.drawCircle(coords.first,coords.second,2f, green)
                     }
                 }
+
+                //point "forward" test
+                val coordsStart=polarToCanvas(0,0,canvas.width,canvas.height)
+                val coordsFinish=polarToCanvas(10000,0,canvas.width,canvas.height)
+                val red=Paint()
+                red.color=Color.RED
+                canvas.drawLine(coordsStart.first,coordsStart.second,coordsFinish.first,coordsFinish.second, red)
+
             }else{
                 //if there is no lidar data draw 4 circles as an example
                 canvas.drawCircle(100f,100f,5f, green)
