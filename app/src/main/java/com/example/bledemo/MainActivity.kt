@@ -565,11 +565,11 @@ class MainActivity : AppCompatActivity() {
                 //draw each point on the canvas
                 lidarPointList.forEach{ point->
                     //don't draw null points
-                    if(point.distance!=0 && point.intensity!=0){
+                    if(point.distance!=0 && point.intensity!=0){//TODO controllare perchè alcuni punti rimangono anche se arriva un pacchetto nuovo
 
                         coords=polarToCanvas(point.distance,point.angle,canvas.width,canvas.height)
 
-                        canvas.drawCircle(coords.first,coords.second,2f, green)
+                        canvas.drawCircle(coords.first,coords.second,4f, green)
                     }
                 }
 
