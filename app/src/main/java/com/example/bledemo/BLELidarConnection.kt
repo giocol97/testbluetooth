@@ -37,6 +37,7 @@ import java.util.*
 import java.util.UUID
 import kotlin.math.cos
 import kotlin.math.sin
+import kotlin.system.measureTimeMillis
 
 //the Client Characteristic Configuration Descriptor UUID is assigned by the Bluetooth foundation to Google and is the basis for all UUIDs used in Android (https://devzone.nordicsemi.com/f/nordic-q-a/24974/client-characteristic-configuration-descriptor-uuid)
 private  const val CCC_DESCRIPTOR_UUID = "00002902-0000-1000-8000-00805f9b34fb"
@@ -88,6 +89,7 @@ open class BLELidarConnection (bluetoothManager: BluetoothManager,context:Contex
     private var isScanning = false
 
     val lidarPointList=mutableListOf<LidarPoint>()
+    val lidarPointArray=Array(360){LidarPoint(-1,-1,-1)}
     var currentDirection=0
     var currentSpeed=0f
 
@@ -191,13 +193,11 @@ open class BLELidarConnection (bluetoothManager: BluetoothManager,context:Contex
                         onConnectionStatusChange(LIDAR_CHARACTERISTIC_READ)
 
                         //we parse the raw data received from the server into a list of LidarPoints
-                        parseLidarData(value)
-
-                        if (!lidarPointList.isNullOrEmpty()) {
-                            //drawLidarData()//TODO move to main activity
-                        }else{
-                            Log.e("LidarDataError","Lidar data is null")
+                        Handler(Looper.getMainLooper()).post {
+                            parseLidarData(value)
                         }
+
+
                     }
                     BluetoothGatt.GATT_READ_NOT_PERMITTED -> {
                         Log.e("BluetoothGattCallback", "Read not permitted for $uuid")
@@ -237,7 +237,10 @@ open class BLELidarConnection (bluetoothManager: BluetoothManager,context:Contex
                 Log.i("BluetoothGattCallback", "Characteristic $uuid changed")
                 onConnectionStatusChange(LIDAR_CHARACTERISTIC_CHANGED)
                 if(uuid.toString()==LIDAR_CHARACTERISTIC_UUID){
-                    readRawLidarData()
+                    Handler(Looper.getMainLooper()).post {
+                        readRawLidarData()
+                    }
+
                 }
             }
         }
@@ -360,6 +363,7 @@ open class BLELidarConnection (bluetoothManager: BluetoothManager,context:Contex
         }while(data[i]!=DATA_SEPARATOR.toByte())
 
         var angle=temp.joinToString("").toInt()
+        Log.d("AnglesASD","Angle: $angle")
         temp.clear()
         i++
 
@@ -384,10 +388,7 @@ open class BLELidarConnection (bluetoothManager: BluetoothManager,context:Contex
         temp.clear()
         i++
 
-//TODO do in main activity
-        /*  speedView.text= "Speed: $currentSpeed"
-          directionView.text= "Direction: $currentDirection"
-  */
+
         var tempIntensity=0
         var tempDistance=0
 
@@ -416,7 +417,7 @@ open class BLELidarConnection (bluetoothManager: BluetoothManager,context:Contex
     }
 
     //add a point to the list checking for duplicate angle TODO make more efficient
-    private fun addToListNoDuplicates(point:LidarPoint){
+    /*private fun addToListNoDuplicates(point:LidarPoint){
         var found=false
         for(i in lidarPointList.indices){
             if(lidarPointList[i].angle==point.angle){
@@ -428,6 +429,19 @@ open class BLELidarConnection (bluetoothManager: BluetoothManager,context:Contex
         if(!found){
             lidarPointList.add(point)
         }
+    }*/
+    //TODO fix name
+    private fun addToListNoDuplicates(point:LidarPoint){
+        if(point.angle==360) {
+            lidarPointArray[0]=point.copy()
+        }else{
+            lidarPointArray[point.angle]=point.copy()
+        }
+
+    }
+
+    fun returnLidarPointList():List<LidarPoint>{
+        return lidarPointArray.toList()
     }
 
     //function to write data in ByteArray format in a characteristic on the server

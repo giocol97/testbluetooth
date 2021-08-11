@@ -91,6 +91,8 @@ class MainActivity : AppCompatActivity() {
         findViewById(R.id.direction_view)
     }
 
+    private var isRadarDrawing=false
+
 
 
     //check if we have a certain permission
@@ -122,47 +124,54 @@ class MainActivity : AppCompatActivity() {
         return Pair(x,y)
     }
 
+    private var isDrawing=false
+
     private fun drawLidarData(lidarPointList: List<LidarPoint>?){
         //code is inside synchronized block to avoid trying to draw on it twice
-        synchronized(radarView.holder){
-            //get the canvas from the radarView surface
-            val canvas: Canvas =radarView.holder.lockCanvas()
-            val green=Paint()
-            green.color=Color.GREEN
-            var coords=Pair(0f,0f)
+        if(!isDrawing){
+            isDrawing=true
+            synchronized(radarView.holder){
+                //get the canvas from the radarView surface
+                val canvas: Canvas =radarView.holder.lockCanvas()
+                val green=Paint()
+                green.color=Color.GREEN
+                var coords=Pair(0f,0f)
 
-            canvas.drawColor(Color.BLACK)
+                canvas.drawColor(Color.BLACK)
 
-            if (!lidarPointList.isNullOrEmpty()) {
-                //draw each point on the canvas
-                lidarPointList.forEach{ point->
-                    //don't draw null points
-                    if(point.distance!=0 && point.intensity!=0){//TODO controllare perchè alcuni punti rimangono anche se arriva un pacchetto nuovo
+                if (!lidarPointList.isNullOrEmpty()) {
+                    //draw each point on the canvas
+                    lidarPointList.forEach{ point->
+                        //don't draw null points
+                        if(point.distance!=0 && point.intensity!=0){//TODO controllare perchè alcuni punti rimangono anche se arriva un pacchetto nuovo
 
-                        coords=polarToCanvas(point.distance,point.angle,canvas.width,canvas.height)
+                            coords=polarToCanvas(point.distance,point.angle,canvas.width,canvas.height)
 
-                        canvas.drawCircle(coords.first,coords.second,4f, green)
+                            canvas.drawCircle(coords.first,coords.second,4f, green)
+                        }
                     }
+
+                    //point "forward" test
+                    val coordsStart=polarToCanvas(0,0,canvas.width,canvas.height)
+                    val coordsFinish=polarToCanvas(10000,0,canvas.width,canvas.height)
+                    val red=Paint()
+                    red.color=Color.RED
+                    canvas.drawLine(coordsStart.first,coordsStart.second,coordsFinish.first,coordsFinish.second, red)
+
+                }else{
+                    //if there is no lidar data draw 4 circles as an example
+                    canvas.drawCircle(100f,100f,5f, green)
+                    canvas.drawCircle(400f,100f,5f, green)
+                    canvas.drawCircle(100f,400f,5f, green)
+                    canvas.drawCircle(400f,400f,5f, green)
                 }
 
-                //point "forward" test
-                val coordsStart=polarToCanvas(0,0,canvas.width,canvas.height)
-                val coordsFinish=polarToCanvas(10000,0,canvas.width,canvas.height)
-                val red=Paint()
-                red.color=Color.RED
-                canvas.drawLine(coordsStart.first,coordsStart.second,coordsFinish.first,coordsFinish.second, red)
-
-            }else{
-                //if there is no lidar data draw 4 circles as an example
-                canvas.drawCircle(100f,100f,5f, green)
-                canvas.drawCircle(400f,100f,5f, green)
-                canvas.drawCircle(100f,400f,5f, green)
-                canvas.drawCircle(400f,400f,5f, green)
+                //release the canvas
+                radarView.holder.unlockCanvasAndPost(canvas)
+                isDrawing=false
             }
-
-            //release the canvas
-            radarView.holder.unlockCanvasAndPost(canvas)
         }
+
     }
 
     private fun min(a:Int,b:Int): Int {
@@ -177,15 +186,24 @@ class MainActivity : AppCompatActivity() {
 
         bleLidarConnection=object : BLELidarConnection(bluetoothManager,this){
             override fun onConnectionStatusChange(status:Int){
-                //TODO gestire risposte dalla classe
-                if(status==LIDAR_CHARACTERISTIC_PARSED){
-                    drawLidarData(bleLidarConnection.lidarPointList)
-                    speedView.text=bleLidarConnection.currentSpeed.toString()
-                    directionView.text=bleLidarConnection.currentDirection.toString()
-                }else{
-                    Log.d("BLELidarConnection","Status: $status")
+                //TODO gestire tutte le risposte dalla classe
+                Log.d("BLELidarConnection","Status: $status")
+                when(status){
+                    LIDAR_CHARACTERISTIC_PARSED->{
+                        //startRadarLoop()
+                        drawLidarData(bleLidarConnection.returnLidarPointList())
+                        speedView.text=bleLidarConnection.currentSpeed.toString()
+                        directionView.text=bleLidarConnection.currentDirection.toString()
+                    }
+                    CONNECTION_COMPLETE->{
+                        runOnUiThread {
+                            scanButton.text="Connected"
+                        }
+                    }
+                    else->{
+                        null
+                    }
                 }
-
             }
         }
 
@@ -193,23 +211,6 @@ class MainActivity : AppCompatActivity() {
         scanButton.setOnClickListener {
             startConnection()
         }
-
-        //when the view is created draw the default example data on it
-        radarView.holder.addCallback(object : SurfaceHolder.Callback {
-            override fun surfaceDestroyed(holder: SurfaceHolder) = Unit
-
-            override fun surfaceChanged(
-                holder: SurfaceHolder,
-                format: Int,
-                width: Int,
-                height: Int) = Unit
-
-            @RequiresApi(Build.VERSION_CODES.O)
-            override fun surfaceCreated(holder: SurfaceHolder) {
-                drawLidarData(null)
-                //TODO startRadarLoop()
-            }
-        })
 
         //after create completes or when the app is reopened we check if bluetooth is enabled and prompt to enable it
         if (!bluetoothAdapter.isEnabled) {
@@ -229,6 +230,16 @@ class MainActivity : AppCompatActivity() {
             promptEnableBluetooth()
         }
     }
+
+    private fun startRadarLoop(){
+        if(!isRadarDrawing){
+            isRadarDrawing=true
+            while(true){//TODO enable manual stopping
+                drawLidarData(null)
+            }
+        }
+    }
+
 
     //if bluetooth is not enabled prompt on the screen to enable it
     private fun promptEnableBluetooth() {
