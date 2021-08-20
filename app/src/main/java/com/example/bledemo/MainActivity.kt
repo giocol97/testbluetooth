@@ -55,6 +55,7 @@ private const val CONNECTION_COMPLETE=3
 private const val LIDAR_CHARACTERISTIC_CHANGED=4
 private const val LIDAR_CHARACTERISTIC_READ=5
 private const val LIDAR_CHARACTERISTIC_PARSED=6
+private const val LIDAR_CHARACTERISTIC_DRAWABLE=7
 
 class MainActivity : AppCompatActivity() {
 
@@ -93,16 +94,11 @@ class MainActivity : AppCompatActivity() {
 
     private var isRadarDrawing=false
 
-
-
     //check if we have a certain permission
     private fun Context.hasPermission(permissionType: String): Boolean {
         return ContextCompat.checkSelfPermission(this, permissionType) ==
                 PackageManager.PERMISSION_GRANTED
     }
-
-
-
 
     private fun polarToCanvas(distance:Int,angle:Int,width:Int,height:Int):Pair<Float,Float>{
         //transform polar->cartesian coordinates
@@ -126,6 +122,8 @@ class MainActivity : AppCompatActivity() {
 
     private var isDrawing=false
 
+    private var connectionComplete=false
+
     private fun drawLidarData(lidarPointList: List<LidarPoint>?){
         //code is inside synchronized block to avoid trying to draw on it twice
         if(!isDrawing){
@@ -134,7 +132,9 @@ class MainActivity : AppCompatActivity() {
                 //get the canvas from the radarView surface
                 val canvas: Canvas =radarView.holder.lockCanvas()
                 val green=Paint()
+                val red=Paint()
                 green.color=Color.GREEN
+                red.color=Color.RED
                 var coords=Pair(0f,0f)
 
                 canvas.drawColor(Color.BLACK)
@@ -143,19 +143,22 @@ class MainActivity : AppCompatActivity() {
                     //draw each point on the canvas
                     lidarPointList.forEach{ point->
                         //don't draw null points
-                        if(point.distance!=0 && point.intensity!=0){//TODO controllare perchè alcuni punti rimangono anche se arriva un pacchetto nuovo
+                        if(point.distance>0 && point.intensity>0){//TODO controllare perchè alcuni punti rimangono anche se arriva un pacchetto nuovo
 
                             coords=polarToCanvas(point.distance,point.angle,canvas.width,canvas.height)
 
-                            canvas.drawCircle(coords.first,coords.second,4f, green)
+                            if(point.angle>180) {
+                                canvas.drawCircle(coords.first, coords.second, 4f, green)
+                            }else{
+                                canvas.drawCircle(coords.first,coords.second,4f, green)
+                            }
                         }
                     }
 
                     //point "forward" test
                     val coordsStart=polarToCanvas(0,0,canvas.width,canvas.height)
                     val coordsFinish=polarToCanvas(10000,0,canvas.width,canvas.height)
-                    val red=Paint()
-                    red.color=Color.RED
+
                     canvas.drawLine(coordsStart.first,coordsStart.second,coordsFinish.first,coordsFinish.second, red)
 
                 }else{
@@ -191,11 +194,17 @@ class MainActivity : AppCompatActivity() {
                 when(status){
                     LIDAR_CHARACTERISTIC_PARSED->{
                         //startRadarLoop()
-                        drawLidarData(bleLidarConnection.returnLidarPointList())
+                        //drawLidarData(bleLidarConnection.returnLidarPointList())
                         speedView.text=bleLidarConnection.currentSpeed.toString()
                         directionView.text=bleLidarConnection.currentDirection.toString()
                     }
+
+                    LIDAR_CHARACTERISTIC_DRAWABLE->{
+                        drawLidarData(bleLidarConnection.returnLidarPointList())
+                    }
+
                     CONNECTION_COMPLETE->{
+                        connectionComplete=true
                         runOnUiThread {
                             scanButton.text="Connected"
                         }
@@ -209,7 +218,12 @@ class MainActivity : AppCompatActivity() {
 
         //setup listener on the scan button
         scanButton.setOnClickListener {
-            startConnection()
+            if(!connectionComplete){
+                startConnection()
+            }else{
+                showCounters()
+                showString()
+            }
         }
 
         //after create completes or when the app is reopened we check if bluetooth is enabled and prompt to enable it
@@ -268,6 +282,20 @@ class MainActivity : AppCompatActivity() {
         }else {
             Log.e("StartConnectionError","Location permission not granted or bluetooth off")
         }
+    }
+    
+    private fun showCounters(){
+        Log.d("counters","Characteristic changed/read/parsed: ${bleLidarConnection.numChanges} / ${bleLidarConnection.numRead} / ${bleLidarConnection.numParsed}")
+    }
+
+    //show hex of received packets
+    private fun showString(){
+        var i=0
+        bleLidarConnection.saveString.forEach{
+            Log.d("showString","Pacchetto ${i++}: $it")
+        }
+        //reset saved packets
+        bleLidarConnection.saveString = mutableListOf<String>()
     }
 
     //to scan for devices the fine location permission is required, prompt the user to give location permission

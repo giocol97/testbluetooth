@@ -43,14 +43,15 @@ import kotlin.system.measureTimeMillis
 private  const val CCC_DESCRIPTOR_UUID = "00002902-0000-1000-8000-00805f9b34fb"
 
 //lidar constants
-private const val LIDAR_UUID="7da5e347-cbd3-42bb-b813-5a4585d5e44a"//TODO put real one
-private const val LIDAR_SERVICE_UUID="7da5e347-cbd3-42bb-b813-5a4585d5e44a"//TODO put real one
-private const val LIDAR_CHARACTERISTIC_UUID="eec3f9dd-cf13-4ed7-89d7-49592be711b2"//TODO put real one
-private const val GATT_MAX_MTU_SIZE = 517//TODO put real one
+private const val LIDAR_UUID="7da5e347-cbd3-42bb-b813-5a4585d5e44a"
+private const val LIDAR_SERVICE_UUID="7da5e347-cbd3-42bb-b813-5a4585d5e44a"
+private const val LIDAR_CHARACTERISTIC_UUID="eec3f9dd-cf13-4ed7-89d7-49592be711b2"
+private const val GATT_MAX_MTU_SIZE = 517
 
 //lidar data packets constants
 private const val END_LINE=0x0A // '\n'
 private const val DATA_SEPARATOR=0x3B //';'
+private const val ZERO_SIGNAL=0x5A //'Z'
 
 //status change constants
 private const val DEVICE_FOUND=0
@@ -60,6 +61,8 @@ private const val CONNECTION_COMPLETE=3
 private const val LIDAR_CHARACTERISTIC_CHANGED=4
 private const val LIDAR_CHARACTERISTIC_READ=5
 private const val LIDAR_CHARACTERISTIC_PARSED=6
+private const val LIDAR_CHARACTERISTIC_DRAWABLE=7
+
 
 
 open class BLELidarConnection (bluetoothManager: BluetoothManager,context:Context){
@@ -88,10 +91,18 @@ open class BLELidarConnection (bluetoothManager: BluetoothManager,context:Contex
     //variable to check if device is scanning, if set also change ui text
     private var isScanning = false
 
-    val lidarPointList=mutableListOf<LidarPoint>()
     val lidarPointArray=Array(360){LidarPoint(-1,-1,-1)}
     var currentDirection=0
     var currentSpeed=0f
+
+    //debug variables TODO cleanup
+    var numChanges=0
+    var numRead=0
+    var numParsed=0
+    var saveString= mutableListOf<String>()
+
+
+
 
 
     //ScanCallback variable to obtain scan results and start the connection
@@ -184,6 +195,7 @@ open class BLELidarConnection (bluetoothManager: BluetoothManager,context:Contex
 
         //after we make a read operation this callback will be called with the data requested in characteristic.value or an error
         override fun onCharacteristicRead( gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
+            numRead++
             with(characteristic) {
                 when (status) {
                     BluetoothGatt.GATT_SUCCESS -> {
@@ -232,6 +244,7 @@ open class BLELidarConnection (bluetoothManager: BluetoothManager,context:Contex
         //this callback happens after we set up a notification for a characteristic and the characteristic is updated by the server
         //if the characteristic is the lidar data we can then attempt to read it and we will receive the data on the onCharacteristicRead callback
         override fun onCharacteristicChanged( gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic ) {
+            numChanges++
             with(characteristic) {
 //                Log.i("BluetoothGattCallback", "Characteristic $uuid changed | value: ${value.toHexString()}")
                 Log.i("BluetoothGattCallback", "Characteristic $uuid changed")
@@ -346,6 +359,7 @@ open class BLELidarConnection (bluetoothManager: BluetoothManager,context:Contex
 
     //parse the lidar data in the desired format, returns null if the header is wrong
     private fun parseLidarData(data:ByteArray){
+        numParsed++
 
         //check if header char is correct
         if(data[0]!='H'.toByte()){
@@ -363,9 +377,12 @@ open class BLELidarConnection (bluetoothManager: BluetoothManager,context:Contex
         }while(data[i]!=DATA_SEPARATOR.toByte())
 
         var angle=temp.joinToString("").toInt()
-        Log.d("AnglesASD","Angle: $angle")
+
         temp.clear()
         i++
+
+        saveString.add("Startangle $angle - data: ${data.toHexString()}")
+
 
         //get current direction
         do{
@@ -396,24 +413,48 @@ open class BLELidarConnection (bluetoothManager: BluetoothManager,context:Contex
             do{
                 temp.add(data[i].toChar())
                 i++
-            }while(data[i]!=DATA_SEPARATOR.toByte())
-
-            tempDistance=temp.joinToString("").toInt()
-            temp.clear()
-            i++
-
-            do{
-                temp.add(data[i].toChar())
+                if(i==data.size){
+                    Log.e("parseLidarDataError","Error in packet format")
+                    return
+                }
+                }while(data[i]!=DATA_SEPARATOR.toByte())
+            if(data[i-1]!= ZERO_SIGNAL.toByte()){//normal angle
+                tempDistance=temp.joinToString("").toInt()
+                temp.clear()
                 i++
-            }while(i!=data.size && data[i]!=END_LINE.toByte())
 
-            tempIntensity=temp.joinToString("").toInt()
-            temp.clear()
-            i++
+                do{
+                    temp.add(data[i].toChar())
+                    i++
+                }while(i!=data.size && data[i]!=END_LINE.toByte())
 
-            addToListNoDuplicates(LidarPoint(angle++,tempDistance,tempIntensity))
+                tempIntensity=temp.joinToString("").toInt()
+                temp.clear()
+                i++
+
+                addToListNoDuplicates(LidarPoint(angle++,tempDistance,tempIntensity))
+            }else{//sequence of n zero valued angles
+                temp.clear()
+                i++
+
+                do{
+                    temp.add(data[i].toChar())
+                    i++
+                }while(i!=data.size && data[i]!=END_LINE.toByte())
+
+                angle+=temp.joinToString("").toInt()
+                temp.clear()
+                i++
+            }
+
         }
+
         onConnectionStatusChange(LIDAR_CHARACTERISTIC_PARSED)
+
+        if(angle>359){
+            onConnectionStatusChange(LIDAR_CHARACTERISTIC_DRAWABLE)
+        }
+
     }
 
     //add a point to the list checking for duplicate angle TODO make more efficient
@@ -460,77 +501,6 @@ open class BLELidarConnection (bluetoothManager: BluetoothManager,context:Contex
             gatt.writeCharacteristic(characteristic)
         }
     }
-
-//TODO do in main activity
-    /*
-     private fun polarToCanvas(distance:Int,angle:Int,width:Int,height:Int):Pair<Float,Float>{
-         //transform polar->cartesian coordinates
-         //MAX_DISTANCE defines a saturation point for distance representation
-         //ANGLE_OFFSET defines where the angles start from, 0 is x axis
-         val angleRads = (angle + ANGLE_OFFSET) * Math.PI / 180;
-
-         var x=(min(distance, MAX_DISTANCE)* cos(angleRads)).toFloat()
-         var y=(min(distance,MAX_DISTANCE)* sin(angleRads)).toFloat()
-
-         //fit in the canvas
-         x=x*(width/2)/MAX_DISTANCE
-         y=y*(height/2)/MAX_DISTANCE
-
-         //center in the middle of the canvas
-         x+=(width/2)
-         y+=(height/2)
-
-         return Pair(x,y)
-     }
-
-  private fun drawLidarData(){
-         //code is inside synchronized block to avoid trying to draw on it twice
-         synchronized(radarView.holder){
-             //get the canvas from the radarView surface
-             val canvas: Canvas =radarView.holder.lockCanvas()
-             val green= Paint()
-             green.color= Color.GREEN
-             var coords=Pair(0f,0f)
-
-             canvas.drawColor(Color.BLACK)
-
-             if (!lidarPointList.isNullOrEmpty()) {
-                 //draw each point on the canvas
-                 lidarPointList.forEach{ point->
-                     //don't draw null points
-                     if(point.distance!=0 && point.intensity!=0){//TODO controllare perchè alcuni punti rimangono anche se arriva un pacchetto nuovo
-
-                         coords=polarToCanvas(point.distance,point.angle,canvas.width,canvas.height)
-
-                         canvas.drawCircle(coords.first,coords.second,4f, green)
-                     }
-                 }
-
-                 //point "forward" test
-                 val coordsStart=polarToCanvas(0,0,canvas.width,canvas.height)
-                 val coordsFinish=polarToCanvas(10000,0,canvas.width,canvas.height)
-                 val red= Paint()
-                 red.color= Color.RED
-                 canvas.drawLine(coordsStart.first,coordsStart.second,coordsFinish.first,coordsFinish.second, red)
-
-             }else{
-                 //if there is no lidar data draw 4 circles as an example
-                 canvas.drawCircle(100f,100f,5f, green)
-                 canvas.drawCircle(400f,100f,5f, green)
-                 canvas.drawCircle(100f,400f,5f, green)
-                 canvas.drawCircle(400f,400f,5f, green)
-             }
-
-             //release the canvas
-             radarView.holder.unlockCanvasAndPost(canvas)
-         }
-     }
-
-     //Android API N is needed for min function...
-     private fun min(a:Int,b:Int): Int {
-         return if(a>b) b else a
-     }*/
-
 
 
     //clear the previous scan results and start a new scan
