@@ -194,7 +194,7 @@ class MainActivity : AppCompatActivity() {
                 when(status){
                     LIDAR_CHARACTERISTIC_PARSED->{
                         //startRadarLoop()
-                        //drawLidarData(bleLidarConnection.returnLidarPointList())
+                        drawLidarData(bleLidarConnection.returnLidarPointList())
                         speedView.text=bleLidarConnection.currentSpeed.toString()
                         directionView.text=bleLidarConnection.currentDirection.toString()
                     }

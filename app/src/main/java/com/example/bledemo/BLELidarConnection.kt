@@ -1,43 +1,16 @@
 package com.example.bledemo
 
-import android.Manifest
-import android.app.Activity
 import android.bluetooth.*
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.Context
-import android.content.DialogInterface
-import android.content.Intent
-import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
-import android.os.*
-import androidx.appcompat.app.AppCompatActivity
+import android.os.Handler
+import android.os.Looper
+import android.os.ParcelUuid
 import android.util.Log
-import android.view.SurfaceHolder
-import android.view.SurfaceView
-import android.view.View
-import android.view.View.GONE
-import android.view.View.VISIBLE
-import android.widget.Button
-import android.widget.TextView
-import androidx.annotation.RequiresApi
-import androidx.appcompat.app.AlertDialog
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
-import androidx.recyclerview.widget.SimpleItemAnimator
-import kotlin.collections.*
 import java.util.*
-import java.util.UUID
-import kotlin.math.cos
-import kotlin.math.sin
-import kotlin.system.measureTimeMillis
 
 //the Client Characteristic Configuration Descriptor UUID is assigned by the Bluetooth foundation to Google and is the basis for all UUIDs used in Android (https://devzone.nordicsemi.com/f/nordic-q-a/24974/client-characteristic-configuration-descriptor-uuid)
 private  const val CCC_DESCRIPTOR_UUID = "00002902-0000-1000-8000-00805f9b34fb"
@@ -148,6 +121,7 @@ open class BLELidarConnection (bluetoothManager: BluetoothManager,context:Contex
                     //save the BluetoothGatt object, change MTU size and discover the services offered by the device
                     bluetoothGatt = gatt
                     bluetoothGatt.requestMtu(GATT_MAX_MTU_SIZE)
+                    bluetoothGatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH)
                 } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                     Log.w("BluetoothGattCallback", "Successfully disconnected from $deviceAddress")
                     gatt.close()
@@ -195,30 +169,34 @@ open class BLELidarConnection (bluetoothManager: BluetoothManager,context:Contex
 
         //after we make a read operation this callback will be called with the data requested in characteristic.value or an error
         override fun onCharacteristicRead( gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
-            numRead++
-            with(characteristic) {
-                when (status) {
-                    BluetoothGatt.GATT_SUCCESS -> {
-                        //Log.i("BluetoothGattCallback", "Read characteristic $uuid:\n${value.toHexString()}")
-                        Log.i("BluetoothGattCallback", "Read characteristic $uuid")
-
-                        onConnectionStatusChange(LIDAR_CHARACTERISTIC_READ)
-
-                        //we parse the raw data received from the server into a list of LidarPoints
-                        Handler(Looper.getMainLooper()).post {
-                            parseLidarData(value)
-                        }
-
-
-                    }
-                    BluetoothGatt.GATT_READ_NOT_PERMITTED -> {
-                        Log.e("BluetoothGattCallback", "Read not permitted for $uuid")
-                    }
-                    else -> {
-                        Log.e("BluetoothGattCallback", "Characteristic read failed for $uuid, error: $status")
-                    }
-                }
-            }
+            Thread {
+                onConnectionStatusChange(LIDAR_CHARACTERISTIC_READ)
+                parseLidarData(characteristic.value)
+            }.start()
+//            numRead++
+//            with(characteristic) {
+//                when (status) {
+//                    BluetoothGatt.GATT_SUCCESS -> {
+//                        //Log.i("BluetoothGattCallback", "Read characteristic $uuid:\n${value.toHexString()}")
+//                        //Log.i("BluetoothGattCallback", "Read characteristic $uuid")
+//
+//                        onConnectionStatusChange(LIDAR_CHARACTERISTIC_READ)
+//
+//                        //we parse the raw data received from the server into a list of LidarPoints
+//                        Handler(Looper.getMainLooper()).post {
+//                             parseLidarData(value)
+//                        }
+//
+//
+//                    }
+//                    BluetoothGatt.GATT_READ_NOT_PERMITTED -> {
+//                        Log.e("BluetoothGattCallback", "Read not permitted for $uuid")
+//                    }
+//                    else -> {
+//                        Log.e("BluetoothGattCallback", "Characteristic read failed for $uuid, error: $status")
+//                    }
+//                }
+//            }
         }
 
         //this call back tells us the result of a write operation on the server
@@ -243,19 +221,27 @@ open class BLELidarConnection (bluetoothManager: BluetoothManager,context:Contex
 
         //this callback happens after we set up a notification for a characteristic and the characteristic is updated by the server
         //if the characteristic is the lidar data we can then attempt to read it and we will receive the data on the onCharacteristicRead callback
-        override fun onCharacteristicChanged( gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic ) {
-            numChanges++
-            with(characteristic) {
-//                Log.i("BluetoothGattCallback", "Characteristic $uuid changed | value: ${value.toHexString()}")
-                Log.i("BluetoothGattCallback", "Characteristic $uuid changed")
-                onConnectionStatusChange(LIDAR_CHARACTERISTIC_CHANGED)
-                if(uuid.toString()==LIDAR_CHARACTERISTIC_UUID){
-                    Handler(Looper.getMainLooper()).post {
-                        readRawLidarData()
-                    }
+//        override fun onCharacteristicChanged( gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic ) {
+//            numChanges++
+//            with(characteristic) {
+//                // Log.i("BluetoothGattCallback", "Characteristic $uuid changed | value: ${value.toHexString()}")
+//                // Log.i("BluetoothGattCallback", "Characteristic $uuid changed, size: ${value.size}")
+//                onConnectionStatusChange(LIDAR_CHARACTERISTIC_CHANGED)
+//                if(uuid.toString()==LIDAR_CHARACTERISTIC_UUID){
+//                    Handler(Looper.getMainLooper()).post {
+//                        Log.i("onCharacteristicChanged", "characteristic did change")
+//                        //readRawLidarData()
+//                    }
+//
+//                }
+//            }
+//        }
 
-                }
-            }
+        override fun onCharacteristicChanged( gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic ) {
+            Thread {
+                onConnectionStatusChange(LIDAR_CHARACTERISTIC_CHANGED)
+                readRawLidarData()
+            }.start()
         }
     }
 
