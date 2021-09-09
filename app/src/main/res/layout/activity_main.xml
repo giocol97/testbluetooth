@@ -34,6 +34,12 @@
                 android:orientation="vertical"
                 android:paddingTop="16dp">
 
+                <ProgressBar
+                    android:id="@+id/progressBar"
+                    style="?android:attr/progressBarStyleHorizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content" />
+
                 <TextView
                     android:id="@+id/speed_view"
                     android:layout_width="match_parent"

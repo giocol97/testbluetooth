@@ -24,6 +24,7 @@ import android.view.View
 import android.view.View.GONE
 import android.view.View.VISIBLE
 import android.widget.Button
+import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AlertDialog
@@ -92,6 +93,10 @@ class MainActivity : AppCompatActivity() {
         findViewById(R.id.direction_view)
     }
 
+    private val progressBar: ProgressBar by lazy{
+        findViewById(R.id.progressBar)
+    }
+
     private var isRadarDrawing=false
 
     //check if we have a certain permission
@@ -133,9 +138,15 @@ class MainActivity : AppCompatActivity() {
                 val canvas: Canvas =radarView.holder.lockCanvas()
                 val green=Paint()
                 val red=Paint()
+                val orange=Paint()
+                val yellow=Paint()
                 green.color=Color.GREEN
                 red.color=Color.RED
+                orange.color=Color.rgb(255,165,0)
+                yellow.color=Color.YELLOW
                 var coords=Pair(0f,0f)
+
+                var chosenColor: Paint
 
                 canvas.drawColor(Color.BLACK)
 
@@ -147,10 +158,21 @@ class MainActivity : AppCompatActivity() {
 
                             coords=polarToCanvas(point.distance,point.angle,canvas.width,canvas.height)
 
-                            if(point.angle>180) {
-                                canvas.drawCircle(coords.first, coords.second, 4f, green)
+                            if(point.distance<1000){
+                                chosenColor=red
+                            }else if(point.distance<1500){
+                                chosenColor=orange
+                            }else if(point.distance<2500){
+                                chosenColor=yellow
                             }else{
-                                canvas.drawCircle(coords.first,coords.second,4f, green)
+                                chosenColor=green
+                            }
+
+
+                            if(point.angle>180) {
+                                canvas.drawCircle(coords.first, coords.second, 4f, chosenColor)
+                            }else{
+                                canvas.drawCircle(coords.first, coords.second, 4f, chosenColor)
                             }
                         }
                     }
