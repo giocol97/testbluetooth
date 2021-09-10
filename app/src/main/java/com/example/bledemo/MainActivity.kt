@@ -37,6 +37,8 @@ import kotlin.collections.*
 import java.util.*
 import java.util.UUID
 import kotlin.math.cos
+import kotlin.math.exp
+import kotlin.math.pow
 import kotlin.math.sin
 
 
@@ -109,7 +111,7 @@ class MainActivity : AppCompatActivity() {
         //transform polar->cartesian coordinates
         //MAX_DISTANCE defines a saturation point for distance representation
         //ANGLE_OFFSET defines where the angles start from, 0 is x axis
-        val angleRads = (angle + ANGLE_OFFSET) * Math.PI / 180;
+        val angleRads = (angle + ANGLE_OFFSET) * Math.PI / 180
 
         var x=(min(distance, MAX_DISTANCE)*cos(angleRads)).toFloat()
         var y=(min(distance,MAX_DISTANCE)*sin(angleRads)).toFloat()
@@ -128,6 +130,36 @@ class MainActivity : AppCompatActivity() {
     private var isDrawing=false
 
     private var connectionComplete=false
+
+    fun directionToRadAngle(dir:Int):Float{//TODO
+        return 0f
+    }
+
+    fun degToRad(angle:Int):Float{
+        return ( angle.rem(360)* Math.PI/180).toFloat()
+    }
+
+    fun degToShiftedRad(angle:Int):Float{
+        val shiftedAngle=if(angle<=180) angle else angle-360
+        return ( shiftedAngle * Math.PI/180).toFloat()
+    }
+
+    fun riskPerPoint(vel:Float,dir:Int,angle:Int,dist:Int):Float{
+
+        val dirAngle=directionToRadAngle(dir)
+        val angleRads = degToShiftedRad(angle + ANGLE_OFFSET)
+        val distMeters=dist/1000
+
+        val mult=exp(-0.5*((angleRads-dirAngle).pow(2)))
+
+        //val velNon0=if(vel==0f)0.1f else vel
+        val velNon0=1f
+        val risk=2f.pow((-distMeters/velNon0)).toDouble()
+
+
+        return (mult*risk).toFloat()
+    }
+
 
     private fun drawLidarData(lidarPointList: List<LidarPoint>?){
         //code is inside synchronized block to avoid trying to draw on it twice
@@ -158,11 +190,25 @@ class MainActivity : AppCompatActivity() {
 
                             coords=polarToCanvas(point.distance,point.angle,canvas.width,canvas.height)
 
-                            if(point.distance<1000){
+                            val risk=riskPerPoint(bleLidarConnection.currentSpeed,bleLidarConnection.currentDirection,point.angle,point.distance)
+
+                            /*if(point.distance<1000){
                                 chosenColor=red
                             }else if(point.distance<1500){
                                 chosenColor=orange
                             }else if(point.distance<2500){
+                                chosenColor=yellow
+                            }else{
+                                chosenColor=green
+                            }*/
+
+                            Log.d("ASD","ASD risk: $risk - ${bleLidarConnection.currentSpeed} ${bleLidarConnection.currentDirection},${degToRad(point.angle)},${point.distance} }")
+
+                            if(risk>0.7f){
+                                chosenColor=red
+                            }else if(risk>0.5f){
+                                chosenColor=orange
+                            }else if(risk>0.3f){
                                 chosenColor=yellow
                             }else{
                                 chosenColor=green
@@ -217,8 +263,11 @@ class MainActivity : AppCompatActivity() {
                     LIDAR_CHARACTERISTIC_PARSED->{
                         //startRadarLoop()
                         drawLidarData(bleLidarConnection.returnLidarPointList())
-                        speedView.text=bleLidarConnection.currentSpeed.toString()
-                        directionView.text=bleLidarConnection.currentDirection.toString()
+                        runOnUiThread {
+                            speedView.text=bleLidarConnection.currentSpeed.toString()
+                            directionView.text=bleLidarConnection.currentDirection.toString()
+                        }
+
                     }
 
                     LIDAR_CHARACTERISTIC_DRAWABLE->{
