@@ -202,13 +202,13 @@ class MainActivity : AppCompatActivity() {
                                 chosenColor=green
                             }*/
 
-                            Log.d("ASD","ASD risk: $risk - ${bleLidarConnection.currentSpeed} ${bleLidarConnection.currentDirection},${degToRad(point.angle)},${point.distance} }")
+                            //Log.d("ASD","ASD risk: $risk - ${bleLidarConnection.currentSpeed} ${bleLidarConnection.currentDirection},${degToRad(point.angle)},${point.distance} }")
 
-                            if(risk>0.7f){
+                            if(risk>0.6f){
                                 chosenColor=red
-                            }else if(risk>0.5f){
+                            }else if(risk>0.4f){
                                 chosenColor=orange
-                            }else if(risk>0.3f){
+                            }else if(risk>0.2f){
                                 chosenColor=yellow
                             }else{
                                 chosenColor=green
