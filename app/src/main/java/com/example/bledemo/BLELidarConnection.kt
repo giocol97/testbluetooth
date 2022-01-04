@@ -349,7 +349,7 @@ open class BLELidarConnection (bluetoothManager: BluetoothManager,context:Contex
     }
 
     //parse the lidar data in the desired format, returns null if the header is wrong
-    //Current header format: H;millis;angolo;sterzo;velocità;stato_freno;\n
+    //Current header format: H;millis;angolo;sterzo;velocità;stato_freno\n
     private fun parseLidarData(data:ByteArray){
         numParsed++
 
@@ -358,7 +358,6 @@ open class BLELidarConnection (bluetoothManager: BluetoothManager,context:Contex
             Log.e("parseLidarDataError","Header line does not contain control character")
             return
         }
-
 
         lastHeader="H;"
 
@@ -372,12 +371,11 @@ open class BLELidarConnection (bluetoothManager: BluetoothManager,context:Contex
         }while(data[i]!=DATA_SEPARATOR.toByte())
 
         currentTime=temp.joinToString("").toInt()
-        lastHeader+=temp.joinToString("")+DATA_SEPARATOR.toString()
+        lastHeader+=temp.joinToString("")+DATA_SEPARATOR.toChar()
         temp.clear()
         i++
 
-        //TODO salvare e usare tempo corrente
-
+        //TODO trasformare tempo trasferito in timestamp
 
         //get starting angle for packet
         do{
@@ -386,7 +384,7 @@ open class BLELidarConnection (bluetoothManager: BluetoothManager,context:Contex
         }while(data[i]!=DATA_SEPARATOR.toByte())
 
         var angle=temp.joinToString("").toInt()
-        lastHeader+=temp.joinToString("")+DATA_SEPARATOR.toString()
+        lastHeader+=temp.joinToString("")+DATA_SEPARATOR.toChar()
         temp.clear()
         i++
 
@@ -400,7 +398,7 @@ open class BLELidarConnection (bluetoothManager: BluetoothManager,context:Contex
         }while(data[i]!=DATA_SEPARATOR.toByte())
 
         currentDirection=temp.joinToString("").toInt()
-        lastHeader+=temp.joinToString("")+DATA_SEPARATOR.toString()
+        lastHeader+=temp.joinToString("")+DATA_SEPARATOR.toChar()
         temp.clear()
         i++
 
@@ -412,7 +410,7 @@ open class BLELidarConnection (bluetoothManager: BluetoothManager,context:Contex
 
         currentSpeed=temp.joinToString("").toFloat()
         currentSpeed/=10f
-        lastHeader+=temp.joinToString("")+DATA_SEPARATOR.toString()
+        lastHeader+=temp.joinToString("")+DATA_SEPARATOR.toChar()
         temp.clear()
         i++
 
