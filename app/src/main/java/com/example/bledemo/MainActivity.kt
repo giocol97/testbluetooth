@@ -24,6 +24,7 @@ import android.view.View
 import android.view.View.GONE
 import android.view.View.VISIBLE
 import android.widget.Button
+import android.widget.EditText
 import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.annotation.RequiresApi
@@ -98,6 +99,19 @@ class MainActivity : AppCompatActivity() {
     private val progressBar: ProgressBar by lazy{
         findViewById(R.id.progressBar)
     }
+
+
+    //elementi ui per invio comandi
+    private val headerTextView: TextView by lazy{
+        findViewById(R.id.headerTextView)
+    }
+    private val commandButton: Button by lazy{
+        findViewById(R.id.commandButton)
+    }
+    private val commandBox: EditText by lazy{
+        findViewById(R.id.commandBox)
+    }
+
 
     private var isRadarDrawing=false
 
@@ -245,6 +259,14 @@ class MainActivity : AppCompatActivity() {
 
     }
 
+    private fun sendBLECommand(){
+        val command=commandBox.text
+        if(!command.equals("")){
+            bleLidarConnection.writeMessageToLidarCharacteristic(command.toString())
+        }
+        commandBox.setText("")
+    }
+
     private fun min(a:Int,b:Int): Int {
         return if(a>b) b else a
     }
@@ -266,6 +288,7 @@ class MainActivity : AppCompatActivity() {
                         runOnUiThread {
                             speedView.text=bleLidarConnection.currentSpeed.toString()
                             directionView.text=bleLidarConnection.currentDirection.toString()
+                            headerTextView.text=bleLidarConnection.lastHeader
                         }
 
                     }
@@ -295,6 +318,15 @@ class MainActivity : AppCompatActivity() {
                 showCounters()
                 showString()
             }
+        }
+
+        commandButton.setOnClickListener {
+            if(connectionComplete){
+                sendBLECommand()
+            }else{
+                Log.d("Errore","Dispositivo non connesso, impossibile mandare il messaggio")
+            }
+
         }
 
         //after create completes or when the app is reopened we check if bluetooth is enabled and prompt to enable it

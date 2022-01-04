@@ -67,12 +67,17 @@ open class BLELidarConnection (bluetoothManager: BluetoothManager,context:Contex
     val lidarPointArray=Array(360){LidarPoint(-1,-1,-1)}
     var currentDirection=0
     var currentSpeed=0f
+    var currentTime=0
+    var currentBrakeStatus=0
+    var lastHeader=""
 
     //debug variables TODO cleanup
     var numChanges=0
     var numRead=0
     var numParsed=0
     var saveString= mutableListOf<String>()
+
+    var lidarCharacteristic: BluetoothGattCharacteristic? = null
 
 
 
@@ -146,10 +151,10 @@ open class BLELidarConnection (bluetoothManager: BluetoothManager,context:Contex
                 //set up notifications for the lidar characteristic so we get a callback every time the data updates
                 val lidarServiceUuid = UUID.fromString(LIDAR_SERVICE_UUID)
                 val lidarDataCharUuid = UUID.fromString(LIDAR_CHARACTERISTIC_UUID)
-                val lidarDataChar = bluetoothGatt.getService(lidarServiceUuid)?.getCharacteristic(lidarDataCharUuid)
-                if (lidarDataChar != null) {
+                lidarCharacteristic = bluetoothGatt.getService(lidarServiceUuid)?.getCharacteristic(lidarDataCharUuid)
+                if (lidarCharacteristic != null) {
                     onConnectionStatusChange(CONNECTION_COMPLETE)
-                    enableNotifications(lidarDataChar)
+                    enableNotifications(lidarCharacteristic!!)
                 }else{
                     Log.e("BluetoothGattCallback","Error: Lidar characteristic not found")
                 }
@@ -344,6 +349,7 @@ open class BLELidarConnection (bluetoothManager: BluetoothManager,context:Contex
     }
 
     //parse the lidar data in the desired format, returns null if the header is wrong
+    //Current header format: H;millis;angolo;sterzo;velocità;stato_freno;\n
     private fun parseLidarData(data:ByteArray){
         numParsed++
 
@@ -353,8 +359,25 @@ open class BLELidarConnection (bluetoothManager: BluetoothManager,context:Contex
             return
         }
 
+
+        lastHeader="H;"
+
         val temp=mutableListOf<Char>()
         var i=2
+
+        //get current time from start for packet
+        do{
+            temp.add(data[i].toChar())
+            i++
+        }while(data[i]!=DATA_SEPARATOR.toByte())
+
+        currentTime=temp.joinToString("").toInt()
+        lastHeader+=temp.joinToString("")+DATA_SEPARATOR.toString()
+        temp.clear()
+        i++
+
+        //TODO salvare e usare tempo corrente
+
 
         //get starting angle for packet
         do{
@@ -363,7 +386,7 @@ open class BLELidarConnection (bluetoothManager: BluetoothManager,context:Contex
         }while(data[i]!=DATA_SEPARATOR.toByte())
 
         var angle=temp.joinToString("").toInt()
-
+        lastHeader+=temp.joinToString("")+DATA_SEPARATOR.toString()
         temp.clear()
         i++
 
@@ -377,6 +400,7 @@ open class BLELidarConnection (bluetoothManager: BluetoothManager,context:Contex
         }while(data[i]!=DATA_SEPARATOR.toByte())
 
         currentDirection=temp.joinToString("").toInt()
+        lastHeader+=temp.joinToString("")+DATA_SEPARATOR.toString()
         temp.clear()
         i++
 
@@ -384,12 +408,26 @@ open class BLELidarConnection (bluetoothManager: BluetoothManager,context:Contex
         do{
             temp.add(data[i].toChar())
             i++
-        }while(data[i]!=END_LINE.toByte())
+        }while(data[i]!=DATA_SEPARATOR.toByte())
 
         currentSpeed=temp.joinToString("").toFloat()
         currentSpeed/=10f
+        lastHeader+=temp.joinToString("")+DATA_SEPARATOR.toString()
         temp.clear()
         i++
+
+
+        //get current brake status
+        do{
+            temp.add(data[i].toChar())
+            i++
+        }while(data[i]!=END_LINE.toByte())
+
+        currentBrakeStatus=temp.joinToString("").toInt()
+        lastHeader+=temp.joinToString("")
+        temp.clear()
+        i++
+
 
 
         var tempIntensity=0
@@ -469,6 +507,12 @@ open class BLELidarConnection (bluetoothManager: BluetoothManager,context:Contex
 
     fun returnLidarPointList():List<LidarPoint>{
         return lidarPointArray.toList()
+    }
+
+    fun writeMessageToLidarCharacteristic(message:String){
+        if(lidarCharacteristic!=null){
+            writeCharacteristic(lidarCharacteristic!!,message.toByteArray())
+        }
     }
 
     //function to write data in ByteArray format in a characteristic on the server
