@@ -112,6 +112,13 @@ class MainActivity : AppCompatActivity() {
         findViewById(R.id.commandBox)
     }
 
+    private val brakeOnButton: Button by lazy{
+        findViewById(R.id.brakeOnButton)
+    }
+    private val brakeOffButton: Button by lazy{
+        findViewById(R.id.brakeOffButton)
+    }
+
 
     private var isRadarDrawing=false
 
@@ -259,12 +266,16 @@ class MainActivity : AppCompatActivity() {
 
     }
 
-    private fun sendBLECommand(){
-        val command=commandBox.text
-        if(!command.equals("")){
-            bleLidarConnection.writeMessageToLidarCharacteristic(command.toString())
+    private fun sendBLECommand(str:String=""){
+        if(str!=""){
+            bleLidarConnection.writeMessageToLidarCharacteristic(str)
+        }else{
+            val command=commandBox.text.toString()//TODO indagare bug spannable
+            if(command != ""){
+                bleLidarConnection.writeMessageToLidarCharacteristic(command)
+            }
+            commandBox.setText("")
         }
-        commandBox.setText("")
     }
 
     private fun min(a:Int,b:Int): Int {
@@ -326,7 +337,22 @@ class MainActivity : AppCompatActivity() {
             }else{
                 Log.d("Errore","Dispositivo non connesso, impossibile mandare il messaggio")
             }
+        }
+        brakeOnButton.setOnClickListener {
+            if(connectionComplete){
+                sendBLECommand("BRAKE_ON")
+            }else{
+                Log.d("Errore","Dispositivo non connesso, impossibile mandare il messaggio")
+            }
 
+        }
+
+        brakeOffButton.setOnClickListener {
+            if(connectionComplete){
+                sendBLECommand("BRAKE_OFF")
+            }else{
+                Log.d("Errore","Dispositivo non connesso, impossibile mandare il messaggio")
+            }
         }
 
         //after create completes or when the app is reopened we check if bluetooth is enabled and prompt to enable it
