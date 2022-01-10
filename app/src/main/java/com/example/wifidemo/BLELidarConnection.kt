@@ -1,4 +1,4 @@
-package com.example.bledemo
+package com.example.wifidemo
 
 import android.bluetooth.*
 import android.bluetooth.le.ScanCallback

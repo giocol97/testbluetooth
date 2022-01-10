@@ -1,4 +1,4 @@
-package com.example.bledemo
+package com.example.wifidemo
 
 import android.bluetooth.le.ScanResult
 import android.view.View
