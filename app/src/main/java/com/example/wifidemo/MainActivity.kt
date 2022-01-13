@@ -14,13 +14,15 @@ import android.os.*
 import androidx.appcompat.app.AppCompatActivity
 import android.util.Log
 import android.view.SurfaceView
-import android.widget.Button
-import android.widget.EditText
-import android.widget.ProgressBar
-import android.widget.TextView
+import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
+import okhttp3.WebSocket
 import kotlin.collections.*
 import kotlin.math.cos
 import kotlin.math.exp
@@ -31,6 +33,15 @@ import kotlin.math.sin
 //useful android constants
 private const val ENABLE_BLUETOOTH_REQUEST_CODE = 1
 private const val LOCATION_PERMISSION_REQUEST_CODE = 2
+
+//ESP32 connection constants
+private const val ESP_DEFAULT_CONNECTION_TYPE="WEBSOCKET"
+private const val ESP_ADDRESS="10.0.1.188" //192.168.1.1
+private const val ESP_PORT="80" //1337
+
+//TODO per ora non è ancora usato
+private const val  WIFI_SSD = "LIDAR_WIFI"
+private const val  WIFI_PWD = "123456789"
 
 //radar view constants
 private const val MAX_DISTANCE=5000
@@ -54,6 +65,10 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var bleLidarConnection: BLELidarConnection
 
+    private lateinit var webSocketConnection:WebSocketConnection
+
+
+    private var espConnectionType= ESP_DEFAULT_CONNECTION_TYPE
 
     //get bluetooth adapter manager to check bluetooth status
     private val bluetoothAdapter: BluetoothAdapter by lazy {
@@ -85,6 +100,9 @@ class MainActivity : AppCompatActivity() {
         findViewById(R.id.progressBar)
     }
 
+    private val connectionTypeSwitch:Switch by lazy{
+        findViewById(R.id.connectionTypeSwitch)
+    }
 
     //elementi ui per invio comandi
     private val headerTextView: TextView by lazy{
@@ -221,7 +239,7 @@ class MainActivity : AppCompatActivity() {
                             }
 
 
-                            if(point.angle>180) {
+                            if(point.angle>180) {//TODO ???
                                 canvas.drawCircle(coords.first, coords.second, 4f, chosenColor)
                             }else{
                                 canvas.drawCircle(coords.first, coords.second, 4f, chosenColor)
@@ -263,6 +281,18 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun sendWSCommand(str:String=""){
+        if(str!=""){
+            webSocketConnection.sendMessage(str)
+        }else{
+            val command=commandBox.text.toString()//TODO indagare bug spannable
+            if(command != ""){
+                webSocketConnection.sendMessage(command)
+            }
+            commandBox.setText("")
+        }
+    }
+
     private fun min(a:Int,b:Int): Int {
         return if(a>b) b else a
     }
@@ -273,38 +303,63 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
 
-        bleLidarConnection=object : BLELidarConnection(bluetoothManager,this){
-            override fun onConnectionStatusChange(status:Int){
-                //TODO gestire tutte le risposte dalla classe
-                Log.d("BLELidarConnection","Status: $status")
-                when(status){
-                    LIDAR_CHARACTERISTIC_PARSED->{
-                        //startRadarLoop()
-                        drawLidarData(bleLidarConnection.returnLidarPointList())
-                        runOnUiThread {
-                            speedView.text=bleLidarConnection.currentSpeed.toString()
-                            directionView.text=bleLidarConnection.currentDirection.toString()
-                            headerTextView.text=bleLidarConnection.lastHeader
+        if(espConnectionType=="BLE"){
+            bleLidarConnection=object : BLELidarConnection(bluetoothManager,this){
+                override fun onConnectionStatusChange(status:Int){
+                    //TODO gestire tutte le risposte dalla classe
+                    Log.d("BLELidarConnection","Status: $status")
+                    when(status){
+                        LIDAR_CHARACTERISTIC_PARSED->{
+                            //startRadarLoop()
+                            drawLidarData(bleLidarConnection.returnLidarPointList())
+                            runOnUiThread {
+                                speedView.text=bleLidarConnection.currentSpeed.toString()
+                                directionView.text=bleLidarConnection.currentDirection.toString()
+                                headerTextView.text=bleLidarConnection.lastHeader
+                            }
+
                         }
 
-                    }
+                        LIDAR_CHARACTERISTIC_DRAWABLE->{
+                            drawLidarData(bleLidarConnection.returnLidarPointList())
+                        }
 
-                    LIDAR_CHARACTERISTIC_DRAWABLE->{
-                        drawLidarData(bleLidarConnection.returnLidarPointList())
-                    }
-
-                    CONNECTION_COMPLETE->{
-                        connectionComplete=true
-                        runOnUiThread {
-                            scanButton.text="Connected"
+                        CONNECTION_COMPLETE->{
+                            connectionComplete=true
+                            runOnUiThread {
+                                scanButton.text="Connected"
+                            }
+                        }
+                        else->{
+                            null
                         }
                     }
-                    else->{
-                        null
+                }
+            }
+        }else if(espConnectionType=="WEBSOCKET"){
+            webSocketConnection = object : WebSocketConnection(ESP_ADDRESS, ESP_PORT){
+                override fun processMessage(message:String){
+                    runOnUiThread {
+                        headerTextView.text=message
                     }
                 }
             }
         }
+
+        if(ESP_DEFAULT_CONNECTION_TYPE=="WEBSOCKET"){
+            runOnUiThread {
+                connectionTypeSwitch.isChecked = true
+            }
+        }
+
+        connectionTypeSwitch.setOnCheckedChangeListener { _, isChecked ->
+            if (isChecked) {
+                espConnectionType="WEBSOCKET"
+            } else {
+                espConnectionType="BLE"
+            }
+        }
+
 
         //setup listener on the scan button
         scanButton.setOnClickListener {
@@ -317,24 +372,29 @@ class MainActivity : AppCompatActivity() {
         }
 
         commandButton.setOnClickListener {
-            if(connectionComplete){
+            if(espConnectionType=="BLE" && connectionComplete){
                 sendBLECommand()
+            }else if(espConnectionType=="WEBSOCKET"){
+                sendWSCommand()
             }else{
                 Log.d("Errore","Dispositivo non connesso, impossibile mandare il messaggio")
             }
         }
         brakeOnButton.setOnClickListener {
-            if(connectionComplete){
+            if(espConnectionType=="BLE" && connectionComplete){
                 sendBLECommand("BRAKE_ON")
+            }else if(espConnectionType=="WEBSOCKET"){
+                sendWSCommand("BRAKE_ON")
             }else{
                 Log.d("Errore","Dispositivo non connesso, impossibile mandare il messaggio")
             }
-
         }
 
         brakeOffButton.setOnClickListener {
-            if(connectionComplete){
+            if(espConnectionType=="BLE" && connectionComplete){
                 sendBLECommand("BRAKE_OFF")
+            }else if(espConnectionType=="WEBSOCKET"){
+                sendWSCommand("BRAKE_OFF")
             }else{
                 Log.d("Errore","Dispositivo non connesso, impossibile mandare il messaggio")
             }
@@ -391,11 +451,26 @@ class MainActivity : AppCompatActivity() {
 
 
     private fun startConnection(){//TODO check isscanning and give feedback
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && isLocationPermissionGranted && bluetoothAdapter.isEnabled) {
-            bleLidarConnection.startBleScan()
-        }else {
-            Log.e("StartConnectionError","Location permission not granted or bluetooth off")
+
+        if(espConnectionType=="BLE"){
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && isLocationPermissionGranted && bluetoothAdapter.isEnabled) {
+                bleLidarConnection.startBleScan()
+            }else {
+                Log.e("StartConnectionError","Location permission not granted or bluetooth off")
+            }
+        }else if(espConnectionType=="WEBSOCKET"){
+            runBlocking {
+                launch{
+                    withContext(Dispatchers.IO) {
+                        webSocketConnection.subscribeToSocketEvents()
+                        connectionComplete=true
+                    }
+                }
+            }
         }
+
+
+
     }
     
     private fun showCounters(){

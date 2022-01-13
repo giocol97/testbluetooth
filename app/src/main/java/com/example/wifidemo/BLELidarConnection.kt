@@ -350,7 +350,7 @@ open class BLELidarConnection (bluetoothManager: BluetoothManager,context:Contex
 
     //parse the lidar data in the desired format, returns null if the header is wrong
     //Current header format: H;millis;angolo;sterzo;velocità;stato_freno\n
-    private fun parseLidarData(data:ByteArray){
+    fun parseLidarData(data:ByteArray){
         numParsed++
 
         //check if header char is correct

@@ -70,6 +70,12 @@
             android:hint="Write the command here..."
             android:inputType="text" />
 
+        <Switch
+            android:id="@+id/connectionTypeSwitch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Off=BLE \ On=Websocket" />
+
         <Button
             android:id="@+id/commandButton"
             android:layout_width="match_parent"
