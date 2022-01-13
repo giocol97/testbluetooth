@@ -419,6 +419,16 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+
+    override fun onDestroy() {
+
+        //dato che sono in chiusura app non importa se cerco di chiudere una connessione inesistente
+        //TODO bloccare connessione ble?
+        webSocketConnection.stopSocket()
+
+        super.onDestroy()
+    }
+
     private fun startRadarLoop(){
         if(!isRadarDrawing){
             isRadarDrawing=true
