@@ -23,7 +23,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import okhttp3.WebSocket
+import okio.ByteString
 import kotlin.collections.*
+import kotlin.experimental.or
 import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.pow
@@ -36,8 +38,8 @@ private const val LOCATION_PERMISSION_REQUEST_CODE = 2
 
 //ESP32 connection constants
 private const val ESP_DEFAULT_CONNECTION_TYPE="WEBSOCKET"
-private const val ESP_ADDRESS="10.0.1.188" //192.168.1.1
-private const val ESP_PORT="80" //1337
+private const val ESP_ADDRESS="192.168.1.1"
+private const val ESP_PORT="1337" //1337
 
 //TODO per ora non è ancora usato
 private const val  WIFI_SSD = "LIDAR_WIFI"
@@ -185,7 +187,7 @@ class MainActivity : AppCompatActivity() {
     }
 
 
-    private fun drawLidarData(lidarPointList: List<LidarPoint>?){
+    private fun drawLidarData(lidarPointList: List<LidarPoint>?, currentSpeed:Float,currentDirection:Int){
         //code is inside synchronized block to avoid trying to draw on it twice
         if(!isDrawing){
             isDrawing=true
@@ -214,7 +216,7 @@ class MainActivity : AppCompatActivity() {
 
                             coords=polarToCanvas(point.distance,point.angle,canvas.width,canvas.height)
 
-                            val risk=riskPerPoint(bleLidarConnection.currentSpeed,bleLidarConnection.currentDirection,point.angle,point.distance)
+                            val risk=riskPerPoint(currentSpeed,currentDirection,point.angle,point.distance)
 
                             /*if(point.distance<1000){
                                 chosenColor=red
@@ -311,7 +313,7 @@ class MainActivity : AppCompatActivity() {
                     when(status){
                         LIDAR_CHARACTERISTIC_PARSED->{
                             //startRadarLoop()
-                            drawLidarData(bleLidarConnection.returnLidarPointList())
+                            drawLidarData(bleLidarConnection.returnLidarPointList(),bleLidarConnection.currentSpeed,bleLidarConnection.currentDirection)
                             runOnUiThread {
                                 speedView.text=bleLidarConnection.currentSpeed.toString()
                                 directionView.text=bleLidarConnection.currentDirection.toString()
@@ -321,7 +323,7 @@ class MainActivity : AppCompatActivity() {
                         }
 
                         LIDAR_CHARACTERISTIC_DRAWABLE->{
-                            drawLidarData(bleLidarConnection.returnLidarPointList())
+                            drawLidarData(bleLidarConnection.returnLidarPointList(),bleLidarConnection.currentSpeed,bleLidarConnection.currentDirection)
                         }
 
                         CONNECTION_COMPLETE->{
@@ -338,9 +340,35 @@ class MainActivity : AppCompatActivity() {
             }
         }else if(espConnectionType=="WEBSOCKET"){
             webSocketConnection = object : WebSocketConnection(ESP_ADDRESS, ESP_PORT){
+                //i pacchetti in formato stringa non dovrebbero essere processati
                 override fun processMessage(message:String){
                     runOnUiThread {
-                        headerTextView.text=message
+                        //headerTextView.text=message
+
+                        //parseLidarData(message.toByteArray())
+                        if( message!="connection accepted"){
+
+                           //TODO
+                            Log.d("ASD","ASD $message")
+
+
+                            //parseFixedLidarData(message.toByteArray())
+                            //Log.d("ASD","ASD $currentTime")
+
+                            //drawLidarData(lidarPointArray.toList(), currentSpeed, currentDirection)
+                        }
+                    }
+                }
+
+
+                //i pacchetti dati del lidar saranno sempre in formato bytestring
+                override fun processMessage(message: ByteString){
+                    val hex=message.hex()
+                    parseFixedLidarData(hex)
+
+                    runOnUiThread {
+                        headerTextView.text="H;$currentTime,\$angle,$currentDirection,$currentSpeed,$currentBrakeStatus"
+                        drawLidarData(lidarPointArray.toList(), currentSpeed, currentDirection)
                     }
                 }
             }
@@ -433,7 +461,7 @@ class MainActivity : AppCompatActivity() {
         if(!isRadarDrawing){
             isRadarDrawing=true
             while(true){//TODO enable manual stopping
-                drawLidarData(null)
+                drawLidarData(null,0f,0)
             }
         }
     }

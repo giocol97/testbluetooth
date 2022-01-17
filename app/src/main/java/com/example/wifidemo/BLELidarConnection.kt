@@ -10,6 +10,10 @@ import android.os.Handler
 import android.os.Looper
 import android.os.ParcelUuid
 import android.util.Log
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import java.util.*
 
 //the Client Characteristic Configuration Descriptor UUID is assigned by the Bluetooth foundation to Google and is the basis for all UUIDs used in Android (https://devzone.nordicsemi.com/f/nordic-q-a/24974/client-characteristic-configuration-descriptor-uuid)
@@ -174,10 +178,14 @@ open class BLELidarConnection (bluetoothManager: BluetoothManager,context:Contex
 
         //after we make a read operation this callback will be called with the data requested in characteristic.value or an error
         override fun onCharacteristicRead( gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
-            Thread {
-                onConnectionStatusChange(LIDAR_CHARACTERISTIC_READ)
-                parseLidarData(characteristic.value)
-            }.start()
+            runBlocking {
+                launch{
+                    withContext(Dispatchers.IO) {
+                        onConnectionStatusChange(LIDAR_CHARACTERISTIC_READ)
+                        parseLidarData(characteristic.value)
+                    }
+                }
+            }
 //            numRead++
 //            with(characteristic) {
 //                when (status) {
@@ -243,10 +251,14 @@ open class BLELidarConnection (bluetoothManager: BluetoothManager,context:Contex
 //        }
 
         override fun onCharacteristicChanged( gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic ) {
-            Thread {
-                onConnectionStatusChange(LIDAR_CHARACTERISTIC_CHANGED)
-                readRawLidarData()
-            }.start()
+            runBlocking {
+                launch{
+                    withContext(Dispatchers.IO) {
+                        onConnectionStatusChange(LIDAR_CHARACTERISTIC_CHANGED)
+                        readRawLidarData()
+                    }
+                }
+            }
         }
     }
 
