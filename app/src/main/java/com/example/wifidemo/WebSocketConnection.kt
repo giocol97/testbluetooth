@@ -70,8 +70,8 @@ open class WebSocketConnection(val address:String, val port:String) {
         webServicesProvider.sendMessage(message)
     }
 
-    public open fun processMessage(message:String){}
-    public open fun processMessage(message:ByteString){}
+    open fun processMessage(message:String){}
+    open fun processMessage(message:ByteString){}
 
     class TimeSynchronization(val ws:WebSocketConnection){
 
@@ -82,6 +82,7 @@ open class WebSocketConnection(val address:String, val port:String) {
         val measurementDelay=200
         var millisReceived=Array<Int>(numMeasurements){0}
         var rtssComputed=Array<Long>(numMeasurements){0}
+        var packetsSentTime=Array<Long>(numMeasurements){0}
 
         var ts=-1
 
@@ -94,6 +95,7 @@ open class WebSocketConnection(val address:String, val port:String) {
 
         fun continueSynchronization(millis:Int){
             rtssComputed[curr]=(System.currentTimeMillis()-lastSentTimestamp)
+            packetsSentTime[curr]=lastSentTimestamp
             millisReceived[curr]=millis
             curr++
             if(curr<numMeasurements){
@@ -108,7 +110,7 @@ open class WebSocketConnection(val address:String, val port:String) {
 
         fun computeSynchronizeTime():Int{
             for (i in millisReceived.indices){
-                millisReceived[i]=millisReceived[i]-(rtssComputed[i]/2).toInt()
+                millisReceived[i]=millisReceived[i]-packetsSentTime[i].toInt()-(rtssComputed[i]/2).toInt()
             }
 
             return millisReceived.sum()/millisReceived.size
