@@ -69,6 +69,10 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var webSocketConnection:WebSocketConnection
 
+    private val timeSyncronization:WebSocketConnection.TimeSynchronization by lazy{
+        WebSocketConnection.TimeSynchronization(webSocketConnection)
+
+    }
 
     private var espConnectionType= ESP_DEFAULT_CONNECTION_TYPE
 
@@ -98,9 +102,13 @@ class MainActivity : AppCompatActivity() {
         findViewById(R.id.direction_view)
     }
 
-    private val progressBar: ProgressBar by lazy{
-        findViewById(R.id.progressBar)
+    private val timeView: TextView by lazy{
+        findViewById(R.id.time_view)
     }
+
+    /*private val progressBar: ProgressBar by lazy{
+        findViewById(R.id.progressBar)
+    }*/
 
     private val connectionTypeSwitch:Switch by lazy{
         findViewById(R.id.connectionTypeSwitch)
@@ -342,7 +350,7 @@ class MainActivity : AppCompatActivity() {
             webSocketConnection = object : WebSocketConnection(ESP_ADDRESS, ESP_PORT){
                 //i pacchetti in formato stringa non dovrebbero essere processati
                 override fun processMessage(message:String){
-                    runOnUiThread {
+                    //runOnUiThread {
                         //headerTextView.text=message
 
                         //parseLidarData(message.toByteArray())
@@ -357,7 +365,16 @@ class MainActivity : AppCompatActivity() {
 
                             //drawLidarData(lidarPointArray.toList(), currentSpeed, currentDirection)
                         }
-                    }
+
+                        //messaggio di sincronizzazione orologio
+                        if("TIME_SYNCHRO1" in message){
+                            timeSyncronization.continueSynchronization(parseTimeSynchronizationMessage(message))
+                            runOnUiThread {
+                                timeView.text=timeSyncronization.ts.toString()
+                            }
+                            //computeSynchronizeTime(message)
+                        }
+                   // }
                 }
 
 
@@ -368,6 +385,8 @@ class MainActivity : AppCompatActivity() {
 
                     runOnUiThread {
                         headerTextView.text="H;$currentTime,\$angle,$currentDirection,$currentSpeed,$currentBrakeStatus"
+                        speedView.text="Speed: $currentSpeed km/h"
+                        directionView.text="Direction $currentDirection"
                         drawLidarData(lidarPointArray.toList(), currentSpeed, currentDirection)
                     }
                 }
@@ -502,6 +521,10 @@ class MainActivity : AppCompatActivity() {
                     withContext(Dispatchers.IO) {
                         webSocketConnection.subscribeToSocketEvents()
                         connectionComplete=true
+
+                        Handler(Looper.getMainLooper()).postDelayed({
+                            timeSyncronization.startSynchronization()
+                        }, 100)
                     }
                 }
             }

@@ -1,4 +1,6 @@
 package com.example.wifidemo
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
@@ -48,14 +50,15 @@ open class WebSocketConnection(val address:String, val port:String) {
                         onSocketError(it.exception!!)
                     }
                 }
-            } catch (ex: java.lang.Exception) {
+            } catch (ex: Exception) {
                 onSocketError(ex)
             }
         }
     }
 
     private fun onSocketError(ex: Throwable) {
-        Log.d("ASD","ASD Error occurred : ${ex.message}")
+
+        Log.d("ASD","ASD Error occurred : ${ex.message} - ${ex.stackTrace} - ${ex.cause}")
     }
 
     @ExperimentalCoroutinesApi
@@ -70,6 +73,49 @@ open class WebSocketConnection(val address:String, val port:String) {
     public open fun processMessage(message:String){}
     public open fun processMessage(message:ByteString){}
 
+    class TimeSynchronization(val ws:WebSocketConnection){
+
+        val synchronizationMessage="TIME_SYNCHRO0"
+        var lastSentTimestamp=0L
+        val numMeasurements=10
+        var curr=0
+        val measurementDelay=200
+        var millisReceived=Array<Int>(numMeasurements){0}
+        var rtssComputed=Array<Long>(numMeasurements){0}
+
+        var ts=-1
+
+
+        fun startSynchronization(){
+            curr=0
+            lastSentTimestamp=System.currentTimeMillis()
+            ws.sendMessage(synchronizationMessage)
+        }
+
+        fun continueSynchronization(millis:Int){
+            rtssComputed[curr]=(System.currentTimeMillis()-lastSentTimestamp)
+            millisReceived[curr]=millis
+            curr++
+            if(curr<numMeasurements){
+                Handler(Looper.getMainLooper()).postDelayed({
+                    lastSentTimestamp=System.currentTimeMillis()
+                    ws.sendMessage(synchronizationMessage)
+                }, measurementDelay.toLong())
+            }else{
+                ts=computeSynchronizeTime()
+            }
+        }
+
+        fun computeSynchronizeTime():Int{
+            for (i in millisReceived.indices){
+                millisReceived[i]=millisReceived[i]-(rtssComputed[i]/2).toInt()
+            }
+
+            return millisReceived.sum()/millisReceived.size
+        }
+
+    }
+
     companion object{
 
         //wheelchair data
@@ -83,6 +129,19 @@ open class WebSocketConnection(val address:String, val port:String) {
         var numChanges=0
         var numRead=0
         var numParsed=0
+
+
+
+
+        fun parseTimeSynchronizationMessage(message:String):Int{
+            var temp=""
+            for(i in 15 until message.length){
+                temp+=message[i].toString()
+            }
+
+            return temp.toInt()
+        }
+
 
         //input stringa hex (es 5A109061), scorre per byte dove ogni byte sono due char della stringa
         fun parseFixedLidarData(data:String){
@@ -134,7 +193,7 @@ open class WebSocketConnection(val address:String, val port:String) {
 
             while(i<data.length){//TODO check arrayoutofbounds
 
-                if(i+4>data.length){
+                if(i+4>=data.length){
                     Log.e("parseLidarDataError","Wrong lidar packet data size")
                     return
                 }
@@ -144,14 +203,26 @@ open class WebSocketConnection(val address:String, val port:String) {
                 tempDistance=temp.toIntLittleEndian()
                 i+=4
 
+                if(i+4>=data.length){
+                    Log.e("parseLidarDataError","Wrong lidar packet data size")
+                    return
+                }
+
                 //intensity = 2 bytes
                 temp=data[i].toString()+data[i+1]+data[i+2]+data[i+3]
                 tempIntensity=temp.toIntLittleEndian()
                 i+=4
 
-                //se distanza è zero saltare un numero di linee pari al valore di intensity (ogni linea sono 4 byte=8 char)
+                //se distanza è zero saltare un numero di angoli pari al valore di intensity (ogni linea sono 4 byte=8 char)
                 if(tempDistance==0){
-                    i+=8*tempIntensity
+
+                    //se anche intensità è zero il pacchetto utile è finito
+                    if(tempIntensity==0){
+                        Log.e("parseLidarDataError","Lidar packet has empty data")
+                        return
+                    }
+
+                    angle+=tempIntensity
                 }else{
                     val point= (LidarPoint(angle++,tempDistance,tempIntensity))
 
