@@ -47,7 +47,7 @@ private const val  WIFI_PWD = "123456789"
 
 //radar view constants
 private const val MAX_DISTANCE=5000
-private const val ANGLE_OFFSET=180
+private const val ANGLE_OFFSET=90//TODO prova 180
 
 //BLE status change constants
 private const val DEVICE_FOUND=0
@@ -71,7 +71,6 @@ class MainActivity : AppCompatActivity() {
 
     private val timeSyncronization:WebSocketConnection.TimeSynchronization by lazy{
         WebSocketConnection.TimeSynchronization(webSocketConnection)
-
     }
 
     private var espConnectionType= ESP_DEFAULT_CONNECTION_TYPE
@@ -190,7 +189,6 @@ class MainActivity : AppCompatActivity() {
         val velNon0=1f
         val risk=2f.pow((-distMeters/velNon0)).toDouble()
 
-
         return (mult*risk).toFloat()
     }
 
@@ -220,11 +218,12 @@ class MainActivity : AppCompatActivity() {
                     //draw each point on the canvas
                     lidarPointList.forEach{ point->
                         //don't draw null points
-                        if(point.distance>0 && point.intensity>0){//TODO controllare perchè alcuni punti rimangono anche se arriva un pacchetto nuovo
+                        if(point.distance>0 /*&& point.intensity>0*/){//TODO controllare perchè alcuni punti rimangono anche se arriva un pacchetto nuovo //TODO rimettere check intensità
 
                             coords=polarToCanvas(point.distance,point.angle,canvas.width,canvas.height)
 
-                            val risk=riskPerPoint(currentSpeed,currentDirection,point.angle,point.distance)
+                            //val risk=riskPerPoint(currentSpeed,currentDirection,point.angle,point.distance)
+                            val risk=point.intensity/100f
 
                             /*if(point.distance<1000){
                                 chosenColor=red
@@ -389,6 +388,10 @@ class MainActivity : AppCompatActivity() {
                         directionView.text="Direction $currentDirection"
                         drawLidarData(lidarPointArray.toList(), currentSpeed, currentDirection)
                     }
+                }
+
+                override fun onSocketError(ex: Throwable) {
+                    Log.d("ASD","ASD Error occurred : ${ex.message} - ${ex.stackTrace} - ${ex.cause}")
                 }
             }
         }
