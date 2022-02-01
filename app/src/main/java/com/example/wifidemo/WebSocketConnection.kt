@@ -8,11 +8,7 @@ import kotlinx.coroutines.channels.consumeEach
 import okhttp3.*
 import okhttp3.WebSocketListener
 import okio.ByteString
-import java.net.InetAddress
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import java.util.concurrent.TimeUnit
-import kotlin.system.measureTimeMillis
 
 //lidar data packets constants
 private const val END_LINE=0x0A // '\n'
@@ -30,6 +26,13 @@ private const val LIDAR_CHARACTERISTIC_PARSED=6
 private const val LIDAR_CHARACTERISTIC_DRAWABLE=7
 
 open class WebSocketConnection(val address:String, val port:String) {
+
+    //wheelchair data
+    val lidarPointArray=Array(360){LidarPoint(-1,-1f,-1)}
+    var currentDirection=0
+    var currentSpeed=0f
+    var currentTime=0
+    var currentBrakeStatus=0
 
     private val webServicesProvider=WebServicesProvider()
 
@@ -69,6 +72,128 @@ open class WebSocketConnection(val address:String, val port:String) {
 
     open fun processMessage(message:String){}
     open fun processMessage(message:ByteString){}
+
+    //input stringa hex (es 5A109061), scorre per byte dove ogni byte sono due char della stringa
+    fun parseFixedLidarData(data:String):PacketParsed?{
+        numParsed++
+        var temp: String
+        var i=0
+
+
+        //parsing header
+        temp=data[i].toString()+data[i+1]
+        //control char = 1 byte
+        if(temp.toInt(16).toChar() != 'H'){
+            Log.e("parseLidarDataError","Header line does not contain control character")
+            return null
+        }
+        i+=2
+
+
+        //millis = 4 bytes
+        temp=data[i].toString()+data[i+1]+data[i+2]+data[i+3]+data[i+4]+data[i+5]+data[i+6]+data[i+7]
+        currentTime=temp.toIntLittleEndian()
+        i+=8
+
+        //angle = 2 bytes
+        temp=data[i].toString()+data[i+1]+data[i+2]+data[i+3]
+        val startingAngle=temp.toIntLittleEndian()
+        var angle=startingAngle
+        i+=4
+
+        if(angle!=0){
+            Log.e("ASD","ASD $angle")
+        }
+
+        //sterzo = 2 bytes
+        temp=data[i].toString()+data[i+1]+data[i+2]+data[i+3]
+        currentDirection=temp.toIntLittleEndian()
+        i+=4
+
+        //speed = 2 bytes
+        temp=data[i].toString()+data[i+1]+data[i+2]+data[i+3]
+        currentSpeed=temp.toIntLittleEndian().toFloat()/10f
+        i+=4
+
+        //brake = 1 byte
+        temp=data[i].toString()+data[i+1]
+        currentBrakeStatus=temp.toIntLittleEndian()
+        i+=2
+
+
+        //parsing angoli
+
+        var tempIntensity=0
+        var tempDistance=0
+
+        while(i<data.length){//TODO check arrayoutofbounds
+
+            if(i+4>=data.length){
+                Log.e("parseLidarDataError","Wrong lidar packet data size")
+                return null
+            }
+
+            //distance = 2 bytes
+            temp=data[i].toString()+data[i+1]+data[i+2]+data[i+3]
+            tempDistance=temp.toIntLittleEndian()
+            i+=4
+
+            if(i+4>=data.length){
+                Log.e("parseLidarDataError","Wrong lidar packet data size")
+                return null
+            }
+
+            //derivata distanza = 2 bytes TODO al momento c'è il calcolo di rischio in un int 0-100
+            temp=data[i].toString()+data[i+1]+data[i+2]+data[i+3]
+            val tempDerivata=temp.toIntLittleEndian() //TODO andrà inserita in un campo di LidarPoint se si decide di usarlo, momentaneamente inutilizzato
+            i+=4
+
+            if(i+4>data.length){
+                Log.e("parseLidarDataError","Wrong lidar packet data size")
+                return null
+            }
+
+            //intensity = 2 bytes
+            temp=data[i].toString()+data[i+1]+data[i+2]+data[i+3]
+            tempIntensity=temp.toIntLittleEndian()
+            i+=4
+
+            //se distanza è zero saltare un numero di angoli pari al valore di derivata (ogni linea sono 4 byte=8 char)
+            if(tempDistance==0){
+
+                //se anche derivata è zero il pacchetto utile è finito o ha un problema di formato
+                if(tempDerivata==0){
+                    Log.e("parseLidarDataError","Lidar packet has no more data after ${i/2} bytes")
+                    return null
+                }
+                angle+=tempDerivata
+
+                if(angle>360){
+                    Log.e("parseLidarDataError","Error in zero angle row, angles would be more than 360")
+                    return null
+                }
+            }else{
+                val point= (LidarPoint(angle,tempDistance.toFloat(),tempIntensity))//TODO rimettere l'intensità
+                angle++
+
+                if(angle>360 || point.angle>=360){
+                    Log.e("parseLidarDataError","Lidar packet has more than 360 degrees")
+                    return null
+                }
+
+                if(angle==360) {
+                    lidarPointArray[0]=point.copy()
+                }else{
+                    lidarPointArray[point.angle]=point.copy()
+                }
+            }
+        }
+
+        return PacketParsed(currentTime,currentDirection,startingAngle,angle,currentSpeed,currentBrakeStatus,lidarPointArray.clone())
+
+    }
+
+    data class PacketParsed(val time:Int=0,val direction:Int=0, val startAngle:Int=0, val endAngle:Int=0, val speed:Float=0f, val brakeStatus:Int=0, val lidarPoints:Array<LidarPoint>)
 
     class TimeSynchronization(val ws:WebSocketConnection){
 
@@ -117,12 +242,12 @@ open class WebSocketConnection(val address:String, val port:String) {
 
     companion object{
 
-        //wheelchair data
+       /* //wheelchair data
         val lidarPointArray=Array(360){LidarPoint(-1,-1,-1)}
         var currentDirection=0
         var currentSpeed=0f
         var currentTime=0
-        var currentBrakeStatus=0
+        var currentBrakeStatus=0*/
 
         //debug variables TODO cleanup
         var numChanges=0
@@ -138,7 +263,7 @@ open class WebSocketConnection(val address:String, val port:String) {
             return temp.toInt()
         }
 
-        //input stringa hex (es 5A109061), scorre per byte dove ogni byte sono due char della stringa
+       /* //input stringa hex (es 5A109061), scorre per byte dove ogni byte sono due char della stringa
         fun parseFixedLidarData(data:String){
             numParsed++
             var temp: String
@@ -164,6 +289,10 @@ open class WebSocketConnection(val address:String, val port:String) {
             temp=data[i].toString()+data[i+1]+data[i+2]+data[i+3]
             var angle=temp.toIntLittleEndian()
             i+=4
+
+            if(angle!=0){
+                Log.e("ASD","ASD $angle")
+            }
 
             //sterzo = 2 bytes
             temp=data[i].toString()+data[i+1]+data[i+2]+data[i+3]
@@ -205,7 +334,7 @@ open class WebSocketConnection(val address:String, val port:String) {
 
                 //derivata distanza = 2 bytes TODO al momento c'è il calcolo di rischio in un int 0-100
                 temp=data[i].toString()+data[i+1]+data[i+2]+data[i+3]
-                val tempDerivata=temp.toIntLittleEndian() //TODO andrà inserita in un campo di LidarPoint se si decide di usarlo
+                val tempDerivata=temp.toIntLittleEndian() //TODO andrà inserita in un campo di LidarPoint se si decide di usarlo, momentaneamente inutilizzato
                 i+=4
 
                 if(i+4>data.length){
@@ -218,17 +347,28 @@ open class WebSocketConnection(val address:String, val port:String) {
                 tempIntensity=temp.toIntLittleEndian() //TODO disattivato temporaneamente per tenere il rischio calcolato a livello esp
                 i+=4
 
-                //se distanza è zero saltare un numero di angoli pari al valore di derivata (ogni linea sono 4 byte=8 char)
+                //se distanza è zero saltare un numero di angoli pari al valore di derivata
                 if(tempDistance==0){
 
                     //se anche derivata è zero il pacchetto utile è finito o ha un problema di formato
                     if(tempDerivata==0){
-                        Log.e("parseLidarDataError","Lidar packet has empty data")
+                        Log.e("parseLidarDataError","Lidar packet has no more data after ${i/2} bytes")
                         return
                     }
                     angle+=tempDerivata
+
+                    if(angle>360){
+                        Log.e("parseLidarDataError","Error in zero angle row, angles would be more than 360")
+                        return
+                    }
                 }else{
-                    val point= (LidarPoint(angle++,tempDistance,tempDerivata))//TODO rimettere l'intensità
+                    val point= (LidarPoint(angle,tempDistance,tempDerivata))//TODO rimettere l'intensità
+                    angle++
+
+                    if(angle>360 || point.angle>=360){
+                        Log.e("parseLidarDataError","Lidar packet has more than 360 degrees")
+                        return
+                    }
 
                     if(angle==360) {
                         lidarPointArray[0]=point.copy()
@@ -238,7 +378,7 @@ open class WebSocketConnection(val address:String, val port:String) {
                 }
             }
 
-        }
+        }*/
 
         fun Array<Int>.toIntLittleEndian(): Int {
             var result = 0

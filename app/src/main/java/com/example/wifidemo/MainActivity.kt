@@ -11,9 +11,11 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.os.*
+import android.text.Layout
 import androidx.appcompat.app.AppCompatActivity
 import android.util.Log
 import android.view.SurfaceView
+import android.view.View
 import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.core.app.ActivityCompat
@@ -22,10 +24,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
-import okhttp3.WebSocket
 import okio.ByteString
 import kotlin.collections.*
-import kotlin.experimental.or
 import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.pow
@@ -113,6 +113,10 @@ class MainActivity : AppCompatActivity() {
         findViewById(R.id.connectionTypeSwitch)
     }
 
+    private val joystickSwitch:Switch by lazy{
+        findViewById(R.id.joystickSwitch)
+    }
+
     //elementi ui per invio comandi
     private val headerTextView: TextView by lazy{
         findViewById(R.id.headerTextView)
@@ -129,6 +133,33 @@ class MainActivity : AppCompatActivity() {
     }
     private val brakeOffButton: Button by lazy{
         findViewById(R.id.brakeOffButton)
+    }
+
+    private val joystickContainer:TableLayout by lazy{
+        findViewById(R.id.joystickContainer)
+    }
+
+
+    //joystick controls
+
+    private val leftButton: Button by lazy{
+        findViewById(R.id.leftButton)
+    }
+
+    private val upButton: Button by lazy{
+        findViewById(R.id.upButton)
+    }
+
+    private val rightButton: Button by lazy{
+        findViewById(R.id.rightButton)
+    }
+
+    private val downButton: Button by lazy{
+        findViewById(R.id.downButton)
+    }
+
+    private val centerButton: Button by lazy{
+        findViewById(R.id.centerButton)
     }
 
 
@@ -195,7 +226,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun drawLidarData(lidarPointList: List<LidarPoint>?, currentSpeed:Float,currentDirection:Int){
         //code is inside synchronized block to avoid trying to draw on it twice
-        if(!isDrawing){
+        if(!isDrawing && radarView.visibility==View.VISIBLE){
             isDrawing=true
             synchronized(radarView.holder){
                 //get the canvas from the radarView surface
@@ -220,7 +251,7 @@ class MainActivity : AppCompatActivity() {
                         //don't draw null points
                         if(point.distance>0 /*&& point.intensity>0*/){//TODO controllare perchè alcuni punti rimangono anche se arriva un pacchetto nuovo //TODO rimettere check intensità
 
-                            coords=polarToCanvas(point.distance,point.angle,canvas.width,canvas.height)
+                            coords=polarToCanvas(point.distance.toInt(),point.angle,canvas.width,canvas.height)
 
                             //val risk=riskPerPoint(currentSpeed,currentDirection,point.angle,point.distance)
                             val risk=point.intensity/100f
@@ -320,6 +351,7 @@ class MainActivity : AppCompatActivity() {
                     when(status){
                         LIDAR_CHARACTERISTIC_PARSED->{
                             //startRadarLoop()
+
                             drawLidarData(bleLidarConnection.returnLidarPointList(),bleLidarConnection.currentSpeed,bleLidarConnection.currentDirection)
                             runOnUiThread {
                                 speedView.text=bleLidarConnection.currentSpeed.toString()
@@ -409,6 +441,18 @@ class MainActivity : AppCompatActivity() {
                 espConnectionType="BLE"
             }
         }
+        joystickSwitch.visibility=View.GONE
+        joystickContainer.visibility=View.GONE
+        radarView.visibility=View.VISIBLE
+        joystickSwitch.setOnCheckedChangeListener { _, isChecked ->
+            if (isChecked) {
+                joystickContainer.visibility=View.VISIBLE
+                radarView.visibility=View.GONE
+            } else {
+                joystickContainer.visibility=View.GONE
+                radarView.visibility=View.VISIBLE
+            }
+        }
 
 
         //setup listener on the scan button
@@ -419,7 +463,18 @@ class MainActivity : AppCompatActivity() {
                 showCounters()
                 showString()
             }
+
+            //dopo che la connessione è stata aperta nascondo il pulsante e lo switch per cambiare tipo connessione
+            scanButton.visibility= View.GONE
+            connectionTypeSwitch.visibility=View.GONE
+
+            //poi rendo visibile il controllo per mostrare il joystick se la modalità è websocket
+            if(espConnectionType=="WEBSOCKET"){
+                joystickSwitch.visibility=View.VISIBLE
+            }
+
         }
+
 
         commandButton.setOnClickListener {
             if(espConnectionType=="BLE" && connectionComplete){
@@ -427,7 +482,7 @@ class MainActivity : AppCompatActivity() {
             }else if(espConnectionType=="WEBSOCKET"){
                 sendWSCommand()
             }else{
-                Log.d("Errore","Dispositivo non connesso, impossibile mandare il messaggio")
+                Log.d("Errore","Dispositivo non connesso, impossibile mandare il messaggio ${commandBox.text}")
             }
         }
         brakeOnButton.setOnClickListener {
@@ -436,7 +491,7 @@ class MainActivity : AppCompatActivity() {
             }else if(espConnectionType=="WEBSOCKET"){
                 sendWSCommand("BRAKE_ON")
             }else{
-                Log.d("Errore","Dispositivo non connesso, impossibile mandare il messaggio")
+                Log.d("Errore","Dispositivo non connesso, impossibile mandare il messaggio BRAKE_ON")
             }
         }
 
@@ -446,9 +501,52 @@ class MainActivity : AppCompatActivity() {
             }else if(espConnectionType=="WEBSOCKET"){
                 sendWSCommand("BRAKE_OFF")
             }else{
-                Log.d("Errore","Dispositivo non connesso, impossibile mandare il messaggio")
+                Log.d("Errore","Dispositivo non connesso, impossibile mandare il messaggio BRAKE_OFF")
             }
         }
+
+        //joystick listeners
+
+        leftButton.setOnClickListener {
+            if(espConnectionType=="WEBSOCKET"){
+                sendWSCommand("WS_JOY_LEFT")
+            }else{
+                Log.d("Errore","Dispositivo non connesso, impossibile mandare il messaggio WS_JOY_LEFT")
+            }
+        }
+
+        upButton.setOnClickListener {
+            if(espConnectionType=="WEBSOCKET"){
+                sendWSCommand("WS_JOY_UP")
+            }else{
+                Log.d("Errore","Dispositivo non connesso, impossibile mandare il messaggio WS_JOY_UP")
+            }
+        }
+
+        rightButton.setOnClickListener {
+            if(espConnectionType=="WEBSOCKET"){
+                sendWSCommand("WS_JOY_RIGHT")
+            }else{
+                Log.d("Errore","Dispositivo non connesso, impossibile mandare il messaggio WS_JOY_RIGHT")
+            }
+        }
+
+        downButton.setOnClickListener {
+            if(espConnectionType=="WEBSOCKET"){
+                sendWSCommand("WS_JOY_DOWN")
+            }else{
+                Log.d("Errore","Dispositivo non connesso, impossibile mandare il messaggio WS_JOY_DOWN")
+            }
+        }
+
+        centerButton.setOnClickListener {
+            if(espConnectionType=="WEBSOCKET"){
+                sendWSCommand("WS_JOY_CENTER")
+            }else{
+                Log.d("Errore","Dispositivo non connesso, impossibile mandare il messaggio WS_JOY_CENTER")
+            }
+        }
+
 
         //after create completes or when the app is reopened we check if bluetooth is enabled and prompt to enable it
         if (!bluetoothAdapter.isEnabled) {
@@ -593,4 +691,4 @@ class MainActivity : AppCompatActivity() {
 }
 
 //class that contains a single lidar data point
-data class LidarPoint(val angle: Int,val distance: Int, val intensity: Int)
+data class LidarPoint(val angle: Int, val distance: Float, val intensity: Int)

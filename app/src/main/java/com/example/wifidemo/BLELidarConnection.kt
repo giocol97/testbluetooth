@@ -68,7 +68,7 @@ open class BLELidarConnection (bluetoothManager: BluetoothManager,context:Contex
     //variable to check if device is scanning, if set also change ui text
     private var isScanning = false
 
-    val lidarPointArray=Array(360){LidarPoint(-1,-1,-1)}
+    val lidarPointArray=Array(360){LidarPoint(-1,-1f,-1)}
     var currentDirection=0
     var currentSpeed=0f
     var currentTime=0
@@ -466,7 +466,7 @@ open class BLELidarConnection (bluetoothManager: BluetoothManager,context:Contex
                 temp.clear()
                 i++
 
-                addToListNoDuplicates(LidarPoint(angle++,tempDistance,tempIntensity))
+                addToListNoDuplicates(LidarPoint(angle++,tempDistance.toFloat(),tempIntensity))
             }else{//sequence of n zero valued angles
                 temp.clear()
                 i++

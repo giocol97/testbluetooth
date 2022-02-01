@@ -76,6 +76,13 @@
             android:layout_height="wrap_content"
             android:text="Off=BLE \ On=Websocket" />
 
+        <Switch
+            android:id="@+id/joystickSwitch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Off=Radar View On=Joystick"
+            tools:visibility="gone" />
+
         <Button
             android:id="@+id/commandButton"
             android:layout_width="match_parent"
@@ -108,7 +115,101 @@
             android:layout_height="match_parent"
             android:layout_marginTop="16dp"
             android:layout_weight="1"
-            android:visibility="visible" />
+            android:visibility="gone" />
+
+        <TableLayout
+            android:id="@+id/joystickContainer"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            tools:visibility="visible">
+
+            <TableRow
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <Space
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="0.33" />
+
+                <Button
+                    android:id="@+id/upButton"
+                    android:layout_width="0dp"
+                    android:layout_height="100dp"
+                    android:layout_weight="0.33"
+                    android:text="↑"
+                    android:textSize="34sp" />
+
+                <Space
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="0.33" />
+
+            </TableRow>
+
+            <TableRow
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <Space
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="0.1" />
+
+                <Button
+                    android:id="@+id/leftButton"
+                    android:layout_width="0dp"
+                    android:layout_height="100dp"
+                    android:layout_weight="0.3"
+                    android:text="←"
+                    android:textSize="34sp" />
+
+                <Button
+                    android:id="@+id/centerButton"
+                    android:layout_width="0dp"
+                    android:layout_height="100dp"
+                    android:layout_weight="0.2"
+                    android:text="□"
+                    android:textSize="34sp" />
+
+                <Button
+                    android:id="@+id/rightButton"
+                    android:layout_width="0dp"
+                    android:layout_height="100dp"
+                    android:layout_weight="0.3"
+                    android:text="→"
+                    android:textSize="34sp" />
+
+                <Space
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="0.1" />
+            </TableRow>
+
+            <TableRow
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" >
+
+                <Space
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="0.33" />
+
+                <Button
+                    android:id="@+id/downButton"
+                    android:layout_width="0dp"
+                    android:layout_height="100dp"
+                    android:layout_weight="0.33"
+                    android:text="↓"
+                    android:textSize="34sp" />
+
+                <Space
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="0.33" />
+            </TableRow>
+
+        </TableLayout>
 
     </LinearLayout>
 
