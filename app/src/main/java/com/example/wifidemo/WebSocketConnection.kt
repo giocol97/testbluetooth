@@ -79,6 +79,11 @@ open class WebSocketConnection(val address:String, val port:String) {
         var temp: String
         var i=0
 
+        //se il pacchetto precedente ha avuto dei problemi possono rimanere dei punti sbagliati nell'array
+        for (i in lidarPointArray.indices){
+            lidarPointArray[i]=LidarPoint(-1,-1f,-1)
+        }
+
 
         //parsing header
         temp=data[i].toString()+data[i+1]
