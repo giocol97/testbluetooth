@@ -73,17 +73,25 @@ open class WebSocketConnection(val address:String, val port:String) {
     open fun processMessage(message:String){}
     open fun processMessage(message:ByteString){}
 
+    //funzione per resettare l'array di punti lidar
+
+    fun resetLidarPointArray(){
+        for (i in lidarPointArray.indices){
+            lidarPointArray[i]=LidarPoint(-1,-1f,-1)
+        }
+    }
+
     //input stringa hex (es 5A109061), scorre per byte dove ogni byte sono due char della stringa
     fun parseFixedLidarData(data:String):PacketParsed?{
         numParsed++
         var temp: String
         var i=0
 
-        //se il pacchetto precedente ha avuto dei problemi possono rimanere dei punti sbagliati nell'array
-        for (i in lidarPointArray.indices){
-            lidarPointArray[i]=LidarPoint(-1,-1f,-1)
-        }
+        //salvo una copia dei punti ricevuti nel pacchetto precedente, li posso usare per vedere se ho ricevuto dei dati nuovi
+        val lastLidarData=lidarPointArray.clone()
 
+        //se il pacchetto precedente ricevuto ha avuto dei problemi possono rimanere dei punti sbagliati nell'array
+        resetLidarPointArray()
 
         //parsing header
         temp=data[i].toString()+data[i+1]
@@ -127,9 +135,12 @@ open class WebSocketConnection(val address:String, val port:String) {
 
 
         //parsing angoli
-
         var tempIntensity=0
         var tempDistance=0
+
+
+        //tengo traccia di quanti punti sono uguali rispetto al pacchetto precedente, se il numero è oltre un possibile errore statistico allora il pacchetto lidar è duplicato e non va considerato
+        var puntiUguali=0
 
         while(i<data.length){//TODO check arrayoutofbounds
 
@@ -181,24 +192,30 @@ open class WebSocketConnection(val address:String, val port:String) {
                 val point= (LidarPoint(angle,tempDistance.toFloat(),tempIntensity))//TODO rimettere l'intensità
                 angle++
 
-                if(angle>360 || point.angle>=360){
+                if(angle>=360 || point.angle>=360){
                     Log.e("parseLidarDataError","Lidar packet has more than 360 degrees")
                     return null
                 }
 
-                if(angle==360) {
-                    lidarPointArray[0]=point.copy()
-                }else{
-                    lidarPointArray[point.angle]=point.copy()
+                //Se il punto che ricevo è uguale al pacchetto precedente incremento il contatore di punti uguali
+                if(point.distance==lastLidarData[point.angle].distance && point.intensity==lastLidarData[point.angle].intensity){
+                    puntiUguali++
                 }
+
+                lidarPointArray[point.angle]=point.copy()
             }
         }
 
-        return PacketParsed(currentTime,currentDirection,startingAngle,angle,currentSpeed,currentBrakeStatus,lidarPointArray.clone())
+        //se c'è una quantità superiore ad un possibile errore di punti uguali lo segnalo
+        if(puntiUguali>10){
+            Log.d("parseLidarDataWarning","Lidar packet has $puntiUguali repeated points compared to previous packet")
+            return PacketParsed(currentTime,currentDirection,startingAngle,angle,currentSpeed,currentBrakeStatus,lidarPointArray.clone(),true)
+        }
 
+        return PacketParsed(currentTime,currentDirection,startingAngle,angle,currentSpeed,currentBrakeStatus,lidarPointArray.clone())
     }
 
-    data class PacketParsed(val time:Int=0,val direction:Int=0, val startAngle:Int=0, val endAngle:Int=0, val speed:Float=0f, val brakeStatus:Int=0, val lidarPoints:Array<LidarPoint>)
+    data class PacketParsed(val time:Int=0,val direction:Int=0, val startAngle:Int=0, val endAngle:Int=0, val speed:Float=0f, val brakeStatus:Int=0, val lidarPoints:Array<LidarPoint>, val isLidarDataDuplicated:Boolean=false)
 
     class TimeSynchronization(val ws:WebSocketConnection){
 
@@ -247,13 +264,6 @@ open class WebSocketConnection(val address:String, val port:String) {
 
     companion object{
 
-       /* //wheelchair data
-        val lidarPointArray=Array(360){LidarPoint(-1,-1,-1)}
-        var currentDirection=0
-        var currentSpeed=0f
-        var currentTime=0
-        var currentBrakeStatus=0*/
-
         //debug variables TODO cleanup
         var numChanges=0
         var numRead=0
@@ -267,123 +277,6 @@ open class WebSocketConnection(val address:String, val port:String) {
 
             return temp.toInt()
         }
-
-       /* //input stringa hex (es 5A109061), scorre per byte dove ogni byte sono due char della stringa
-        fun parseFixedLidarData(data:String){
-            numParsed++
-            var temp: String
-            var i=0
-
-
-            //parsing header
-            temp=data[i].toString()+data[i+1]
-            //control char = 1 byte
-            if(temp.toInt(16).toChar() != 'H'){
-                Log.e("parseLidarDataError","Header line does not contain control character")
-                return
-            }
-            i+=2
-
-
-            //millis = 4 bytes
-            temp=data[i].toString()+data[i+1]+data[i+2]+data[i+3]+data[i+4]+data[i+5]+data[i+6]+data[i+7]
-            currentTime=temp.toIntLittleEndian()
-            i+=8
-
-            //angle = 2 bytes
-            temp=data[i].toString()+data[i+1]+data[i+2]+data[i+3]
-            var angle=temp.toIntLittleEndian()
-            i+=4
-
-            if(angle!=0){
-                Log.e("ASD","ASD $angle")
-            }
-
-            //sterzo = 2 bytes
-            temp=data[i].toString()+data[i+1]+data[i+2]+data[i+3]
-            currentDirection=temp.toIntLittleEndian()
-            i+=4
-
-            //speed = 2 bytes
-            temp=data[i].toString()+data[i+1]+data[i+2]+data[i+3]
-            currentSpeed=temp.toIntLittleEndian().toFloat()/10f
-            i+=4
-
-            //brake = 1 byte
-            temp=data[i].toString()+data[i+1]
-            currentBrakeStatus=temp.toIntLittleEndian()
-            i+=2
-
-
-            //parsing angoli
-
-            var tempIntensity=0
-            var tempDistance=0
-
-            while(i<data.length){//TODO check arrayoutofbounds
-
-                if(i+4>=data.length){
-                    Log.e("parseLidarDataError","Wrong lidar packet data size")
-                    return
-                }
-
-                //distance = 2 bytes
-                temp=data[i].toString()+data[i+1]+data[i+2]+data[i+3]
-                tempDistance=temp.toIntLittleEndian()
-                i+=4
-
-                if(i+4>=data.length){
-                    Log.e("parseLidarDataError","Wrong lidar packet data size")
-                    return
-                }
-
-                //derivata distanza = 2 bytes TODO al momento c'è il calcolo di rischio in un int 0-100
-                temp=data[i].toString()+data[i+1]+data[i+2]+data[i+3]
-                val tempDerivata=temp.toIntLittleEndian() //TODO andrà inserita in un campo di LidarPoint se si decide di usarlo, momentaneamente inutilizzato
-                i+=4
-
-                if(i+4>data.length){
-                    Log.e("parseLidarDataError","Wrong lidar packet data size")
-                    return
-                }
-
-                //intensity = 2 bytes
-                temp=data[i].toString()+data[i+1]+data[i+2]+data[i+3]
-                tempIntensity=temp.toIntLittleEndian() //TODO disattivato temporaneamente per tenere il rischio calcolato a livello esp
-                i+=4
-
-                //se distanza è zero saltare un numero di angoli pari al valore di derivata
-                if(tempDistance==0){
-
-                    //se anche derivata è zero il pacchetto utile è finito o ha un problema di formato
-                    if(tempDerivata==0){
-                        Log.e("parseLidarDataError","Lidar packet has no more data after ${i/2} bytes")
-                        return
-                    }
-                    angle+=tempDerivata
-
-                    if(angle>360){
-                        Log.e("parseLidarDataError","Error in zero angle row, angles would be more than 360")
-                        return
-                    }
-                }else{
-                    val point= (LidarPoint(angle,tempDistance,tempDerivata))//TODO rimettere l'intensità
-                    angle++
-
-                    if(angle>360 || point.angle>=360){
-                        Log.e("parseLidarDataError","Lidar packet has more than 360 degrees")
-                        return
-                    }
-
-                    if(angle==360) {
-                        lidarPointArray[0]=point.copy()
-                    }else{
-                        lidarPointArray[point.angle]=point.copy()
-                    }
-                }
-            }
-
-        }*/
 
         fun Array<Int>.toIntLittleEndian(): Int {
             var result = 0
@@ -481,8 +374,6 @@ class WebServicesProvider {
     fun startSocket(webSocketListener: com.example.wifidemo.WebSocketListener, address:String, port:String) {
         _webSocketListener = webSocketListener
         _webSocket = socketOkHttpClient.newWebSocket(
-            //Request.Builder().url("ws://192.168.124.119:80/").build(),
-            //Request.Builder().url("ws:/10.42.0.54:9090/").build(),
             Request.Builder().url("ws:/$address:$port/").build(),
             webSocketListener
         )

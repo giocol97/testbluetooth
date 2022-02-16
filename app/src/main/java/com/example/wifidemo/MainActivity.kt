@@ -162,6 +162,8 @@ class MainActivity : AppCompatActivity() {
         findViewById(R.id.centerButton)
     }
 
+    var lastTimeStamp=0L
+
 
     private var isRadarDrawing=false
 
@@ -412,14 +414,26 @@ class MainActivity : AppCompatActivity() {
                 //i pacchetti dati del lidar saranno sempre in formato bytestring
                 override fun processMessage(message: ByteString){
                     val hex=message.hex()
-                    parseFixedLidarData(hex)
+                    val packetParsed=parseFixedLidarData(hex)
+                    /*if(packetParsed!=null){
+                        val alarm=computeAlarmLevel(packetParsed)
+                    }*/
+
+                    if(packetParsed==null){
+                        return
+                    }
+
+                    lastTimeStamp++
+
 
                     runOnUiThread {
-                        headerTextView.text="H;$currentTime,\$angle,$currentDirection,$currentSpeed,$currentBrakeStatus"
+                        headerTextView.text="H;$currentTime,\$angle,$currentDirection,$currentSpeed,$currentBrakeStatus \n Alarm level: ${computeAlarmLevel(packetParsed!!)} \n"
                         speedView.text="Speed: $currentSpeed km/h"
                         directionView.text="Direction $currentDirection"
                         drawLidarData(lidarPointArray.toList(), currentSpeed, currentDirection)
                     }
+
+
                 }
 
                 override fun onSocketError(ex: Throwable) {
@@ -556,6 +570,25 @@ class MainActivity : AppCompatActivity() {
         if (!isLocationPermissionGranted) {
             requestLocationPermission()
         }
+
+        //getPacketFrequency()
+
+    }
+
+
+    //funzione per salvare nei log il numero di pacchetti websocket ricevuti ogni secondo
+    fun getPacketFrequency(){
+        Handler(Looper.getMainLooper()).postDelayed(
+            {
+                if(lastTimeStamp!=0L){
+                    Log.d("ASD","ASD frequency: ${lastTimeStamp}")
+                    lastTimeStamp=0L
+                }
+
+                getPacketFrequency()
+            },
+            1000
+        )
     }
 
     override fun onResume(){
@@ -575,6 +608,27 @@ class MainActivity : AppCompatActivity() {
         webSocketConnection.stopSocket()
 
         super.onDestroy()
+    }
+
+    fun computeAlarmLevel(lidarPacket:WebSocketConnection.PacketParsed):String{
+        val shift=180
+        val targetDistance=lidarPacket.speed.pow(2)/200f+0.5f+0.3f
+        var pointsInArea=0
+        var dangerousPointsInArea=0
+        for(i in -18..18){
+            if(lidarPacket.lidarPoints[i+shift].distance/1000f<targetDistance){
+                pointsInArea++
+                dangerousPointsInArea++
+            }else{
+                pointsInArea++
+            }
+        }
+
+        return if(dangerousPointsInArea/pointsInArea>0.3f){
+            "DANGER"
+        }else{
+            "CLEAR"
+        }
     }
 
     private fun startRadarLoop(){
