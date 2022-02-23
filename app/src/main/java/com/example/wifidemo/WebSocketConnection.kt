@@ -74,7 +74,6 @@ open class WebSocketConnection(val address:String, val port:String) {
     open fun processMessage(message:ByteString){}
 
     //funzione per resettare l'array di punti lidar
-
     fun resetLidarPointArray(){
         for (i in lidarPointArray.indices){
             lidarPointArray[i]=LidarPoint(-1,-1f,-1)
@@ -228,8 +227,8 @@ open class WebSocketConnection(val address:String, val port:String) {
         var rtssComputed=Array<Long>(numMeasurements){0}
         var packetsSentTime=Array<Long>(numMeasurements){0}
 
+        //valore di sincronizzazione per differenza orologio esp/telefono, espresso in millisecondi
         var ts=-1L
-
 
         fun startSynchronization(){
             curr=0

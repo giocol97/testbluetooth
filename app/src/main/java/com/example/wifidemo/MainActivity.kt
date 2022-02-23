@@ -20,6 +20,7 @@ import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import com.example.wifidemo.RiskAssessment.Companion.computeLidarRiskProbability
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -167,6 +168,10 @@ class MainActivity : AppCompatActivity() {
 
     private var isRadarDrawing=false
 
+
+    val riskSystem=RiskAssessment(40)
+    var currentLidarProbability=-1f
+
     //check if we have a certain permission
     private fun Context.hasPermission(permissionType: String): Boolean {
         return ContextCompat.checkSelfPermission(this, permissionType) ==
@@ -225,6 +230,29 @@ class MainActivity : AppCompatActivity() {
         return (mult*risk).toFloat()
     }
 
+    fun startRiskAssessmentLoop(){
+        Handler(Looper.getMainLooper()).postDelayed(//TODO rallenta esecuzione? Investigare problemi con memoria o troppe esecuzioni
+            {
+                riskSystem.step(-1f,currentLidarProbability)
+
+                currentLidarProbability=-1f
+
+                val brake=if(riskSystem.shouldBrake()){
+                    //vibrator.vibrate(VibrationEffect.createOneShot(500, VibrationEffect.DEFAULT_AMPLITUDE))
+                    "BRAKE"
+                }else{
+                    "SAFE"
+                }
+
+                /*runOnUiThread {
+                    headerTextView.text=brake+"\n"+riskSystem.probabilitiesToString()
+                }*/
+
+                startRiskAssessmentLoop()
+            },
+            riskSystem.timePeriod.toLong()
+        )
+    }
 
     private fun drawLidarData(lidarPointList: List<LidarPoint>?, currentSpeed:Float,currentDirection:Int){
         //code is inside synchronized block to avoid trying to draw on it twice
@@ -422,7 +450,7 @@ class MainActivity : AppCompatActivity() {
                     if(packetParsed==null){
                         return
                     }
-
+                    currentLidarProbability=computeLidarRiskProbability(packetParsed)
                     lastTimeStamp++
 
 
@@ -468,6 +496,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        startRiskAssessmentLoop()
 
         //setup listener on the scan button
         scanButton.setOnClickListener {
