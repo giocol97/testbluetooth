@@ -735,8 +735,8 @@ class MainActivity : AppCompatActivity() {
         Handler(Looper.getMainLooper()).postDelayed({
             val angle=Math.toDegrees(twistToControl(linearVelocity,angularVelocity).toDouble()).toInt()
             val vel=linearVelocity*3.6f
-            webSocketConnection.sendMessage("CONTROL;${vel.format(4)};${angle};")
-            Log.d("ASD","ASD CONTROL;${vel.format(4)};${angle};")
+            webSocketConnection.sendMessage("CONTROL;${vel.format(4,true)};${angle};")
+            Log.d("ASD","ASD CONTROL;${vel.format(4,true)};${angle};")
             circleLoopStep(linearVelocity,angularVelocity)
         },200)
     }

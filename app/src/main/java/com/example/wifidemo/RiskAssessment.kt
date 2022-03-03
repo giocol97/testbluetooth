@@ -127,7 +127,15 @@ class RiskAssessment(val timePeriod:Int) {
     }
 
 companion object{
-    fun Float.format(digits: Int) = "%.${digits}f".format(this)
+    fun Float.format(digits: Int, dot: Boolean=false):String{
+        if(dot){
+            return "%.${digits}f".format(this).replace(",",".")
+        }else{
+
+            return "%.${digits}f".format(this)
+        }
+    }
+
 
     fun FloatArray.rotateLeft(n:Int){
         for(j in 0 until n){
