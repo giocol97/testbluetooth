@@ -11,7 +11,6 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.os.*
-import android.text.Layout
 import androidx.appcompat.app.AppCompatActivity
 import android.util.Log
 import android.view.SurfaceView
@@ -21,16 +20,14 @@ import androidx.appcompat.app.AlertDialog
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.example.wifidemo.RiskAssessment.Companion.computeLidarRiskProbability
+import com.example.wifidemo.RiskAssessment.Companion.format
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import okio.ByteString
 import kotlin.collections.*
-import kotlin.math.cos
-import kotlin.math.exp
-import kotlin.math.pow
-import kotlin.math.sin
+import kotlin.math.*
 
 
 //useful android constants
@@ -45,7 +42,10 @@ private const val ESP_PORT="1337" //1337
 //TODO per ora non è ancora usato
 private const val  WIFI_SSD = "LIDAR_WIFI"
 private const val  WIFI_PWD = "123456789"
-
+/*
+#define WIFI_SSID_DEFAULT "ESP32-Access-Point"
+#define WIFI_PWD_DEFAULT  "123456789"
+*/
 //radar view constants
 private const val MAX_DISTANCE=5000
 private const val ANGLE_OFFSET=90//TODO prova 180
@@ -132,8 +132,15 @@ class MainActivity : AppCompatActivity() {
     private val brakeOnButton: Button by lazy{
         findViewById(R.id.brakeOnButton)
     }
-    private val brakeOffButton: Button by lazy{
-        findViewById(R.id.brakeOffButton)
+    private val steeringTestButton: Button by lazy{
+        findViewById(R.id.steeringTestButton)
+    }
+    private val circleTestButton: Button by lazy{
+        findViewById(R.id.circleTestButton)
+    }
+
+    private val squareTestButton: Button by lazy{
+        findViewById(R.id.squareTestButton)
     }
 
     private val joystickContainer:TableLayout by lazy{
@@ -538,13 +545,38 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        brakeOffButton.setOnClickListener {
+        steeringTestButton.setOnClickListener {
             if(espConnectionType=="BLE" && connectionComplete){
-                sendBLECommand("BRAKE_OFF")
+                //TODO sendBLECommand("BRAKE_OFF")
             }else if(espConnectionType=="WEBSOCKET"){
-                sendWSCommand("BRAKE_OFF")
+                //sendWSCommand("BRAKE_OFF")
+
+                startSteeringTestLoop()
+
             }else{
-                Log.d("Errore","Dispositivo non connesso, impossibile mandare il messaggio BRAKE_OFF")
+                Log.d("Errore","Dispositivo non connesso, impossibile iniziare steering test")
+            }
+        }
+
+        circleTestButton.setOnClickListener {
+            if(espConnectionType=="WEBSOCKET"){
+                //sendWSCommand("BRAKE_OFF")
+
+                startCircleTestLoop()
+
+            }else{
+                Log.d("Errore","Dispositivo non connesso, impossibile iniziare circle test")
+            }
+        }
+
+        squareTestButton.setOnClickListener {
+            if(espConnectionType=="WEBSOCKET"){
+                //sendWSCommand("BRAKE_OFF")
+
+                startSquareTest()
+
+            }else{
+                Log.d("Errore","Dispositivo non connesso, impossibile iniziare square test")
             }
         }
 
@@ -552,7 +584,7 @@ class MainActivity : AppCompatActivity() {
 
         leftButton.setOnClickListener {
             if(espConnectionType=="WEBSOCKET"){
-                sendWSCommand("WS_JOY_LEFT")
+                webSocketConnection.changeSteeringAngle(-10)
             }else{
                 Log.d("Errore","Dispositivo non connesso, impossibile mandare il messaggio WS_JOY_LEFT")
             }
@@ -568,7 +600,7 @@ class MainActivity : AppCompatActivity() {
 
         rightButton.setOnClickListener {
             if(espConnectionType=="WEBSOCKET"){
-                sendWSCommand("WS_JOY_RIGHT")
+                webSocketConnection.changeSteeringAngle(10)
             }else{
                 Log.d("Errore","Dispositivo non connesso, impossibile mandare il messaggio WS_JOY_RIGHT")
             }
@@ -584,7 +616,7 @@ class MainActivity : AppCompatActivity() {
 
         centerButton.setOnClickListener {
             if(espConnectionType=="WEBSOCKET"){
-                sendWSCommand("WS_JOY_CENTER")
+                webSocketConnection.resetSteeringAngle()
             }else{
                 Log.d("Errore","Dispositivo non connesso, impossibile mandare il messaggio WS_JOY_CENTER")
             }
@@ -601,7 +633,6 @@ class MainActivity : AppCompatActivity() {
         }
 
         //getPacketFrequency()
-
     }
 
 
@@ -658,6 +689,140 @@ class MainActivity : AppCompatActivity() {
         }else{
             "CLEAR"
         }
+    }
+
+    fun startSteeringTestLoop(delay:Int=50,step:Int=10){
+        webSocketConnection.sendMessage("STERZO;90;")
+        Log.d("ASD","ASD RESET angolo: 90, delay: $delay, ESP: ${webSocketConnection.currentTime}, ANDROID ${System.currentTimeMillis()-timeSyncronization.ts}")
+        Handler(Looper.getMainLooper()).postDelayed({
+            steeringLoopStep(90,delay,step)
+        }, 1500)
+
+    }
+
+    fun steeringLoopStep(current:Int,delay:Int,step:Int){
+        if(current<=270){
+            Handler(Looper.getMainLooper()).postDelayed({
+                webSocketConnection.sendMessage("STERZO;$current;")
+                Log.d("ASD","ASD angolo: $current, delay: $delay, millis: ${webSocketConnection.currentTime}, ANDROID ${System.currentTimeMillis()-timeSyncronization.ts}")
+                steeringLoopStep(current+step,delay,step)
+            }, delay.toLong())
+        }else{
+            if(delay>0){
+                Handler(Looper.getMainLooper()).postDelayed({
+                    startSteeringTestLoop(delay)
+                }, 1500)
+
+            }
+        }
+    }
+
+    fun startCircleTestLoop(){
+        val linearSpeed = 1f/3.6f //velocità lineare 1km/h
+        val angularSpeed = 17f*0.0174533f //velocità angolare 17gradi/s
+        circleLoopStep(linearSpeed,angularSpeed)
+    }
+
+    /*fun circleLoopStep(linearSpeed:Float,angularSpeed:Float){
+        Handler(Looper.getMainLooper()).postDelayed({
+            webSocketConnection.sendMessage("TWIST;${linearSpeed.format(4)};${angularSpeed.format(4)};")
+            Log.d("ASD","ASD TWIST;${linearSpeed.format(4)};${angularSpeed.format(4)};")
+            circleLoopStep(linearSpeed,angularSpeed)
+        },200)
+    }*/
+
+    fun circleLoopStep(linearVelocity: Float,angularVelocity: Float){
+        Handler(Looper.getMainLooper()).postDelayed({
+            val angle=Math.toDegrees(twistToControl(linearVelocity,angularVelocity).toDouble()).toInt()
+            val vel=linearVelocity*3.6f
+            webSocketConnection.sendMessage("CONTROL;${vel.format(4)};${angle};")
+            Log.d("ASD","ASD CONTROL;${vel.format(4)};${angle};")
+            circleLoopStep(linearVelocity,angularVelocity)
+        },200)
+    }
+
+    fun twistToControl(linearVelocity:Float,angularVelocity:Float):Float{
+        if(linearVelocity==0f){
+            return 0f
+        }else{
+            if(angularVelocity/linearVelocity>1f){
+                return (Math.PI/2f).toFloat()
+            }
+
+            if(angularVelocity/linearVelocity<-1f){
+                return -(Math.PI/2f).toFloat()
+            }
+
+            return asin(angularVelocity/linearVelocity)
+        }
+    }
+
+    fun startSquareTest(){
+        var waitTime=1L
+        Handler(Looper.getMainLooper()).postDelayed({//avanti lato 1
+            webSocketConnection.sendMessage("TWIST;1.0000;0.0000;")
+        },waitTime)
+        waitTime+=3000L
+        Handler(Looper.getMainLooper()).postDelayed({//frenata 1
+            webSocketConnection.sendMessage("TWIST;0.0000;0.0000;")
+        },waitTime)
+        waitTime+=1000L
+        Handler(Looper.getMainLooper()).postDelayed({//ruoto angolo 1
+            webSocketConnection.sendMessage("TWIST;0.5000;0.7850;")
+        },waitTime)
+        waitTime+=2000L
+        Handler(Looper.getMainLooper()).postDelayed({//frenata 1
+            webSocketConnection.sendMessage("TWIST;0.0000;0.0000;")
+        },waitTime)
+        waitTime+=1000L
+        Handler(Looper.getMainLooper()).postDelayed({//avanti lato 2
+            webSocketConnection.sendMessage("TWIST;1.0000;0.0000;")
+        },waitTime)
+        waitTime+=3000L
+        Handler(Looper.getMainLooper()).postDelayed({//frenata 2
+            webSocketConnection.sendMessage("TWIST;0.0000;0.0000;")
+        },waitTime)
+        waitTime+=1000L
+        Handler(Looper.getMainLooper()).postDelayed({//ruoto angolo 2
+            webSocketConnection.sendMessage("TWIST;0.5000;0.7850;")
+        },waitTime)
+        waitTime+=2000L
+        Handler(Looper.getMainLooper()).postDelayed({//frenata 1
+            webSocketConnection.sendMessage("TWIST;0.0000;0.0000;")
+        },waitTime)
+        waitTime+=1000L
+        Handler(Looper.getMainLooper()).postDelayed({//avanti lato 3
+            webSocketConnection.sendMessage("TWIST;1.0000;0.0000;")
+        },waitTime)
+        waitTime+=3000L
+        Handler(Looper.getMainLooper()).postDelayed({//frenata 3
+            webSocketConnection.sendMessage("TWIST;0.0000;0.0000;")
+        },waitTime)
+        waitTime+=1000L
+        Handler(Looper.getMainLooper()).postDelayed({//ruoto angolo 3
+            webSocketConnection.sendMessage("TWIST;0.5000;0.7850;")
+        },waitTime)
+        waitTime+=2000L
+        Handler(Looper.getMainLooper()).postDelayed({//frenata 1
+            webSocketConnection.sendMessage("TWIST;0.0000;0.0000;")
+        },waitTime)
+        waitTime+=1000L
+        Handler(Looper.getMainLooper()).postDelayed({//avanti lato 4
+            webSocketConnection.sendMessage("TWIST;1.0000;0.0000;")
+        },waitTime)
+        waitTime+=3000L
+        Handler(Looper.getMainLooper()).postDelayed({//frenata 4
+            webSocketConnection.sendMessage("TWIST;0.0000;0.0000;")
+        },waitTime)
+        waitTime+=1000L
+        Handler(Looper.getMainLooper()).postDelayed({//ruoto angolo 4
+            webSocketConnection.sendMessage("TWIST;0.5000;0.7850;")
+        },waitTime)
+        waitTime+=2000L
+        Handler(Looper.getMainLooper()).postDelayed({//frenata 1
+            webSocketConnection.sendMessage("TWIST;0.0000;0.0000;")
+        },waitTime)
+        waitTime+=1000L
     }
 
     private fun startRadarLoop(){

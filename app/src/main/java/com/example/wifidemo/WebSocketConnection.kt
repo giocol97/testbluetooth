@@ -25,6 +25,8 @@ private const val LIDAR_CHARACTERISTIC_READ=5
 private const val LIDAR_CHARACTERISTIC_PARSED=6
 private const val LIDAR_CHARACTERISTIC_DRAWABLE=7
 
+private const val ANGLE_OFFSET=180
+
 open class WebSocketConnection(val address:String, val port:String) {
 
     //wheelchair data
@@ -33,6 +35,7 @@ open class WebSocketConnection(val address:String, val port:String) {
     var currentSpeed=0f
     var currentTime=0
     var currentBrakeStatus=0
+    var currentAngle=0
 
     private val webServicesProvider=WebServicesProvider()
 
@@ -212,6 +215,17 @@ open class WebSocketConnection(val address:String, val port:String) {
         }
 
         return PacketParsed(currentTime,currentDirection,startingAngle,angle,currentSpeed,currentBrakeStatus,lidarPointArray.clone())
+    }
+
+    fun changeSteeringAngle(offset:Int){//offset può essere anche negativo
+        currentAngle+=offset
+        currentAngle=currentAngle.mod(360)
+        this.sendMessage("STERZO;${currentAngle+180};")
+    }
+
+    fun resetSteeringAngle(){
+        currentAngle=0
+        this.sendMessage("STERZO;${currentAngle+180};")
     }
 
     data class PacketParsed(val time:Int=0,val direction:Int=0, val startAngle:Int=0, val endAngle:Int=0, val speed:Float=0f, val brakeStatus:Int=0, val lidarPoints:Array<LidarPoint>, val isLidarDataDuplicated:Boolean=false)
