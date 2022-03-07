@@ -584,7 +584,7 @@ class MainActivity : AppCompatActivity() {
 
         leftButton.setOnClickListener {
             if(espConnectionType=="WEBSOCKET"){
-                webSocketConnection.changeSteeringAngle(-10)
+                webSocketConnection.changeSteeringAngle(-3)
             }else{
                 Log.d("Errore","Dispositivo non connesso, impossibile mandare il messaggio WS_JOY_LEFT")
             }
@@ -600,7 +600,7 @@ class MainActivity : AppCompatActivity() {
 
         rightButton.setOnClickListener {
             if(espConnectionType=="WEBSOCKET"){
-                webSocketConnection.changeSteeringAngle(10)
+                webSocketConnection.changeSteeringAngle(3)
             }else{
                 Log.d("Errore","Dispositivo non connesso, impossibile mandare il messaggio WS_JOY_RIGHT")
             }
@@ -735,12 +735,27 @@ class MainActivity : AppCompatActivity() {
         Handler(Looper.getMainLooper()).postDelayed({
             val angle=Math.toDegrees(twistToControl(linearVelocity,angularVelocity).toDouble()).toInt()
             val vel=linearVelocity*3.6f
+            val period=0.2f//periodo ogni quanto arrivano nuovi pacchetti di controllo in teoria TODO mettere valore corretto
+            val desiredSpeed=((angle-webSocketConnection.lastAngle)/period)
+
+            val maximumSpeed=10f//in gradi secondo
+            val actualSpeed= min(maximumSpeed,desiredSpeed)
+            if(maximumSpeed>desiredSpeed){
+                Log.d("ControlCommandError","Angular velocity is more than the safe value, cutting to a safe value")
+            }
+
+            val newAngle=angle+actualSpeed*period
+
+            webSocketConnection.lastAngle=newAngle
+
             webSocketConnection.sendMessage("CONTROL;${vel.format(4,true)};${angle};")
             Log.d("ASD","ASD CONTROL;${vel.format(4,true)};${angle};")
             circleLoopStep(linearVelocity,angularVelocity)
         },200)
     }
 
+
+    //TODO gestire controllo angular velocity troppo elevato da un'altra parte
     fun twistToControl(linearVelocity:Float,angularVelocity:Float):Float{
         if(linearVelocity==0f){
             return 0f

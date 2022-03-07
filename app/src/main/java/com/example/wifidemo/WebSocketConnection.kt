@@ -37,6 +37,9 @@ open class WebSocketConnection(val address:String, val port:String) {
     var currentBrakeStatus=0
     var currentAngle=0
 
+    //tengo traccia dell'ultimo angolo che è stato richiesto allo sterzo
+    var lastAngle=0f
+
     private val webServicesProvider=WebServicesProvider()
 
     @ExperimentalCoroutinesApi
@@ -177,7 +180,7 @@ open class WebSocketConnection(val address:String, val port:String) {
             i+=4
 
             //se distanza è zero saltare un numero di angoli pari al valore di derivata (ogni linea sono 4 byte=8 char)
-            if(tempDistance==0){
+            if(tempDistance==0 && tempIntensity==0){
 
                 //se anche derivata è zero il pacchetto utile è finito o ha un problema di formato
                 if(tempDerivata==0){
@@ -191,7 +194,12 @@ open class WebSocketConnection(val address:String, val port:String) {
                     return null
                 }
             }else{
-                val point= (LidarPoint(angle,tempDistance.toFloat(),tempIntensity))//TODO rimettere l'intensità
+                val point=  if(tempDistance!=0){
+                    (LidarPoint(angle,tempDistance.toFloat(),tempIntensity))//TODO rimettere l'intensità
+                }else{
+                    (LidarPoint(angle,-1f,tempIntensity))
+                }
+
                 angle++
 
                 if(angle>=360 || point.angle>=360){
