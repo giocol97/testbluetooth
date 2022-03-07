@@ -44,7 +44,8 @@
                     android:id="@+id/direction_view"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Direction" />
+                    android:text="Direction"
+                    android:visibility="gone" />
 
                 <TextView
                     android:id="@+id/time_view"

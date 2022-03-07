@@ -39,6 +39,9 @@ private const val ESP_DEFAULT_CONNECTION_TYPE="WEBSOCKET"
 private const val ESP_ADDRESS="192.168.1.1"
 private const val ESP_PORT="1337" //1337
 
+//su prototipo AIT diverse funzionalità sono disattivate
+private const val IS_AIT=true
+
 //TODO per ora non è ancora usato
 private const val  WIFI_SSD = "LIDAR_WIFI"
 private const val  WIFI_PWD = "123456789"
@@ -379,7 +382,6 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-
         if(espConnectionType=="BLE"){
             bleLidarConnection=object : BLELidarConnection(bluetoothManager,this){
                 override fun onConnectionStatusChange(status:Int){
@@ -503,8 +505,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        startRiskAssessmentLoop()
-
         //setup listener on the scan button
         scanButton.setOnClickListener {
             if(!connectionComplete){
@@ -524,7 +524,6 @@ class MainActivity : AppCompatActivity() {
             }
 
         }
-
 
         commandButton.setOnClickListener {
             if(espConnectionType=="BLE" && connectionComplete){
@@ -620,6 +619,16 @@ class MainActivity : AppCompatActivity() {
             }else{
                 Log.d("Errore","Dispositivo non connesso, impossibile mandare il messaggio WS_JOY_CENTER")
             }
+        }
+
+        if(!IS_AIT){
+            startRiskAssessmentLoop()
+        }
+        if(IS_AIT){
+            circleTestButton.visibility=View.GONE
+            squareTestButton.visibility=View.GONE
+            steeringTestButton.visibility=View.GONE
+            connectionTypeSwitch.visibility=View.GONE
         }
 
 
