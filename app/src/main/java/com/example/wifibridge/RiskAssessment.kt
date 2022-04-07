@@ -1,4 +1,4 @@
-package com.example.wifidemo
+package com.example.wifibridge
 
 import android.annotation.SuppressLint
 import java.lang.Float.max

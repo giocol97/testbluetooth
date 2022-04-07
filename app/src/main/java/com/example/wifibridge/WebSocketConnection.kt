@@ -1,4 +1,4 @@
-package com.example.wifidemo
+package com.example.wifibridge
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -25,8 +25,6 @@ private const val LIDAR_CHARACTERISTIC_READ=5
 private const val LIDAR_CHARACTERISTIC_PARSED=6
 private const val LIDAR_CHARACTERISTIC_DRAWABLE=7
 
-private const val ANGLE_OFFSET=180
-
 open class WebSocketConnection(val address:String, val port:String) {
 
     //wheelchair data
@@ -39,6 +37,10 @@ open class WebSocketConnection(val address:String, val port:String) {
 
     //tengo traccia dell'ultimo angolo che è stato richiesto allo sterzo
     var lastAngle=0f
+
+    //heartbeat variables
+    var lastHeartbeatReceived=0L
+    var isHeartbeatActive=false
 
     private val webServicesProvider=WebServicesProvider()
 
@@ -147,7 +149,7 @@ open class WebSocketConnection(val address:String, val port:String) {
         //tengo traccia di quanti punti sono uguali rispetto al pacchetto precedente, se il numero è oltre un possibile errore statistico allora il pacchetto lidar è duplicato e non va considerato
         var puntiUguali=0
 
-        while(i<data.length){//TODO check arrayoutofbounds
+        while(i<data.length){
 
             if(i+4>=data.length){
                 Log.e("parseLidarDataError","Wrong lidar packet data size")
@@ -217,8 +219,8 @@ open class WebSocketConnection(val address:String, val port:String) {
         }
 
         //se c'è una quantità superiore ad un possibile errore di punti uguali lo segnalo
-        if(puntiUguali>10){
-            Log.d("parseLidarDataWarning","Lidar packet has $puntiUguali repeated points compared to previous packet")
+        if(puntiUguali>180){//TODO gestire in modo migliore
+            //Log.d("parseLidarDataWarning","Lidar packet has $puntiUguali repeated points compared to previous packet")
             return PacketParsed(currentTime,currentDirection,startingAngle,angle,currentSpeed,currentBrakeStatus,lidarPointArray.clone(),true)
         }
 
@@ -230,11 +232,9 @@ open class WebSocketConnection(val address:String, val port:String) {
         currentAngle=currentAngle.mod(360)
         this.sendMessage("STERZO;${currentAngle+180};")
     }
-
     fun resetSteeringAngle(){
         currentAngle=0
-        this.sendMessage("STERZO;${currentAngle+180};")
-    }
+        this.sendMessage("STERZO;${currentAngle+180};")}
 
     data class PacketParsed(val time:Int=0,val direction:Int=0, val startAngle:Int=0, val endAngle:Int=0, val speed:Float=0f, val brakeStatus:Int=0, val lidarPoints:Array<LidarPoint>, val isLidarDataDuplicated:Boolean=false)
 
@@ -251,6 +251,7 @@ open class WebSocketConnection(val address:String, val port:String) {
 
         //valore di sincronizzazione per differenza orologio esp/telefono, espresso in millisecondi
         var ts=-1L
+
 
         fun startSynchronization(){
             curr=0
@@ -285,9 +286,7 @@ open class WebSocketConnection(val address:String, val port:String) {
 
     companion object{
 
-        //debug variables TODO cleanup
-        var numChanges=0
-        var numRead=0
+        //debug variables
         var numParsed=0
 
         fun parseTimeSynchronizationMessage(message:String):Int{
@@ -318,10 +317,7 @@ open class WebSocketConnection(val address:String, val port:String) {
 
             return arr.toIntLittleEndian()
         }
-
     }
-
-
 }
 
 
@@ -341,9 +337,9 @@ class WebSocketListener : WebSocketListener() {
         }
     }
 
-    override fun onMessage(webSocket: WebSocket, text: ByteString) {
+    override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
         GlobalScope.launch {
-            socketEventChannel.send(SocketUpdate("bytestring",text))
+            socketEventChannel.send(SocketUpdate("bytestring",bytes))
         }
     }
 
@@ -360,7 +356,6 @@ class WebSocketListener : WebSocketListener() {
             socketEventChannel.send(SocketUpdate(exception = t))
         }
     }
-
 }
 
 class SocketAbortedException : Exception()
@@ -382,17 +377,17 @@ class WebServicesProvider {
         .build()
 
     @ExperimentalCoroutinesApi
-    private var _webSocketListener: com.example.wifidemo.WebSocketListener? = null
+    private var _webSocketListener: com.example.wifibridge.WebSocketListener? = null
 
     @ExperimentalCoroutinesApi
     fun startSocket( address:String, port:String): Channel<SocketUpdate> =
-        with(com.example.wifidemo.WebSocketListener()) {
+        with(com.example.wifibridge.WebSocketListener()) {
             startSocket(this, address, port)
             this@with.socketEventChannel
         }
 
     @ExperimentalCoroutinesApi
-    fun startSocket(webSocketListener: com.example.wifidemo.WebSocketListener, address:String, port:String) {
+    fun startSocket(webSocketListener: com.example.wifibridge.WebSocketListener, address:String, port:String) {
         _webSocketListener = webSocketListener
         _webSocket = socketOkHttpClient.newWebSocket(
             Request.Builder().url("ws:/$address:$port/").build(),

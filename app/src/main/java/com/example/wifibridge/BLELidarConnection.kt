@@ -1,4 +1,4 @@
-package com.example.wifidemo
+package com.example.wifibridge
 
 import android.bluetooth.*
 import android.bluetooth.le.ScanCallback

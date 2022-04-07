@@ -9,7 +9,7 @@ android {
     buildToolsVersion "30.0.3"
 
     defaultConfig {
-        applicationId "com.example.bledemo"
+        applicationId "com.example.wifibridge"
         minSdkVersion 21
         targetSdkVersion 30
         versionCode 1
@@ -67,4 +67,6 @@ dependencies {
     implementation "com.squareup.okhttp3:okhttp:4.9.0"
 
     implementation("com.github.haifengl:smile-kotlin:2.6.0")
+
+    implementation 'com.github.xiaoxxcool:jrosbridge:develop-SNAPSHOT'
 }

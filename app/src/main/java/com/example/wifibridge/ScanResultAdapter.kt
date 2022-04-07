@@ -1,4 +1,4 @@
-package com.example.wifidemo
+package com.example.wifibridge
 
 import android.bluetooth.le.ScanResult
 import android.view.View
@@ -6,6 +6,7 @@ import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import kotlinx.android.synthetic.main.row_scan_result.view.*
 import org.jetbrains.anko.layoutInflater
+import wifibridge.R
 
 class ScanResultAdapter(
     private val items: List<ScanResult>,

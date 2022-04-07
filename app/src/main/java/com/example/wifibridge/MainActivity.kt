@@ -1,4 +1,4 @@
-package com.example.wifidemo
+package com.example.wifibridge
 
 import android.Manifest
 import android.app.Activity
@@ -19,13 +19,15 @@ import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import com.example.wifidemo.RiskAssessment.Companion.computeLidarRiskProbability
-import com.example.wifidemo.RiskAssessment.Companion.format
+import com.example.wifibridge.common.RosConnectionManager
+import com.example.wifibridge.RiskAssessment.Companion.computeLidarRiskProbability
+import com.example.wifibridge.RiskAssessment.Companion.format
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import okio.ByteString
+import wifibridge.R
 import kotlin.collections.*
 import kotlin.math.*
 
@@ -150,6 +152,12 @@ class MainActivity : AppCompatActivity() {
         findViewById(R.id.joystickContainer)
     }
 
+    // Looper handler thread for compute operations.
+    private var backgroundComputeThread: HandlerThread?=null
+
+    // Looper handler for compute operations.
+    private var backgroundComputeHandler: Handler?=null
+
 
     //joystick controls
 
@@ -173,6 +181,14 @@ class MainActivity : AppCompatActivity() {
         findViewById(R.id.centerButton)
     }
 
+    private val twistStatusView:TextView by lazy{
+        findViewById(R.id.twistConnectionStatus)
+    }
+
+    private val rosStatusView:TextView by lazy{
+        findViewById(R.id.rosConnectionStatus)
+    }
+
     var lastTimeStamp=0L
 
 
@@ -181,6 +197,65 @@ class MainActivity : AppCompatActivity() {
 
     val riskSystem=RiskAssessment(40)
     var currentLidarProbability=-1f
+
+    var isWebSocketConnected=false
+
+    //RosBridge manager helper class
+    private val rosManager: RosConnectionManager = object: RosConnectionManager(){
+        override fun processControlMessage(linearVelocity: Float, angularVelocity: Float,period:Float) {
+            val vel=linearVelocity*3.6f//ricevo in m/s e invio a controller in km/h
+            //var angle=Math.toDegrees(twistToControlAngle(linearVelocity,angularVelocity).toDouble()).toFloat()//angolo in gradi
+
+
+            val maximumSpeed=10f//in gradi secondo
+            val maximumPeriod=1f//in secondi
+            //val desiredSpeed=((angle-lastAngle)/period)
+            val desiredSpeed=-angularVelocity*180f/Math.PI.toFloat()//velocità in gradi al secondo, negativa per notazione ROS
+
+            val actualSpeed=min(maximumSpeed,abs(desiredSpeed))//protezione contro velocità angolare troppo alta
+
+            if(maximumSpeed>desiredSpeed){
+                Log.d("ControlCommandError","Angular velocity is more than the safe value, cutting to a safe value")
+            }
+
+            val actualPeriod=min(maximumPeriod,period)//protezione contro periodi troppo lunghi
+
+            var newAngle=lastAngle+actualSpeed*actualPeriod*sign(desiredSpeed)
+
+            //angoli calcolati su prototipo AIT per ruotare sul posto TODO calcolare su prototipo klaxon
+            /*if(RosConnectionManager.IS_AIT) {
+                val maximumAngle = 76f
+                val minimumAngle = -76f
+            }else{
+                val maximumAngle = 90f
+                val minimumAngle = -90f
+            }*/
+            val maximumAngle = 76f
+            val minimumAngle = -76f
+
+            //protezione contro angoli richiesti fuori da angoli massimi per ruotare sul posto
+            newAngle=min(maximumAngle,newAngle)
+            newAngle=max(minimumAngle,newAngle)
+
+            lastAngle=newAngle
+
+            if(linearVelocity<=0f){//TODO EMANUELE
+                webSocketConnection.sendMessage("BRAKE_ON")
+                publishOnCommandFeedbackPhoneTopic("BRAKE_ON",System.currentTimeMillis()*1000000L)
+                newAngle = newAngle.mod(360f)
+                webSocketConnection.sendMessage("STERZO;${newAngle.toInt()+180};")
+                publishOnCommandFeedbackPhoneTopic("STERZO;${newAngle.toInt()+180};",System.currentTimeMillis()*1000000L)
+                return
+            }
+
+
+
+            webSocketConnection.sendMessage("CONTROL;${vel.format(4,true)};${newAngle.toInt()};")
+            publishOnCommandFeedbackPhoneTopic("CONTROL;${vel.format(4,true)};${newAngle.toInt()};",System.currentTimeMillis()*1000000L)
+
+            Log.d("RosCommandReceived","Ros Twist Command Received: linearVel=$linearVelocity - angularVel=$angularVelocity")
+        }
+    }
 
     //check if we have a certain permission
     private fun Context.hasPermission(permissionType: String): Boolean {
@@ -262,6 +337,23 @@ class MainActivity : AppCompatActivity() {
             },
             riskSystem.timePeriod.toLong()
         )
+    }
+
+    private fun startBackgroundComputeThread(){
+        backgroundComputeThread = HandlerThread("sharedCameraBackground")
+        backgroundComputeThread?.start()
+        backgroundComputeHandler = Handler(backgroundComputeThread!!.looper)
+    }
+
+    private fun stopBackgroundComputeThread() {
+        backgroundComputeThread?.quitSafely()
+        try {
+            backgroundComputeThread!!.join()
+            backgroundComputeThread = null
+            backgroundComputeHandler = null
+        } catch (e: InterruptedException) {
+            Log.e("Backgroundthreaderror", "Interrupted while trying to join background handler thread", e)
+        }
     }
 
     private fun drawLidarData(lidarPointList: List<LidarPoint>?, currentSpeed:Float,currentDirection:Int){
@@ -377,6 +469,88 @@ class MainActivity : AppCompatActivity() {
         return if(a>b) b else a
     }
 
+    //inizio loop heartbeat, mando un messaggio e controllo il messaggio proveniente da controller ogni delay millisecondi
+    fun startHeartbeatLoop(delay:Long){
+        heartbeatLoop(delay)
+        Log.d("HBStartNotification","Heartbeat control loop started")
+    }
+
+    //inizio loop heartbeat, mando un numero di messaggi e controllo il messaggio proveniente da controller un numero di volte al secondo pari a rate
+    fun startHeartbeatLoop(rate:Int){
+        val delay=((1f/rate.toFloat())*1000f).toLong()//delay espresso in ms
+        Log.d("HBStartNotification","Heartbeat control loop started")
+        heartbeatLoop(delay)
+    }
+
+    fun heartbeatLoop(delay:Long){
+        backgroundComputeHandler?.postDelayed({
+            if(isWebSocketConnected){
+                val currentTime=System.currentTimeMillis()
+                val tolerance=10L//tolleranza ritardo pacchetto heartbeat in ms
+
+                //se l'ultimo heartbeat che ho ricevuto è troppo vecchio allora c'è un problema lato esp
+                if((currentTime-webSocketConnection.lastHeartbeatReceived)>(delay+tolerance) && webSocketConnection.isHeartbeatActive){
+                    webSocketConnection.isHeartbeatActive=false
+                    //TODO Log.e("HeartBeatFromWebsocketError","Did not receive heartbeat from websocket in the last $delay milliseconds")
+                    //TODO gestire disconnessione in modo corretto
+                    runOnUiThread{
+                        twistStatusView.text="Twist Disconnected"
+                        twistStatusView.setBackgroundColor(Color.RED)
+                    }
+                }else{
+                    webSocketConnection.isHeartbeatActive=true//TODO probabilmente se l'heartbeat si è interrotto bisogna bloccare esecuzione
+                    runOnUiThread{
+                        twistStatusView.text="Twist Connected"
+                        twistStatusView.setBackgroundColor(Color.GREEN)
+                    }
+
+                }
+            }else{
+                Log.d("HeartBeatFromWSError","Cannot receive heartbeat message from websocket, websocket is disconnected")
+                runOnUiThread{
+                    twistStatusView.text="Twist Disconnected"
+                    twistStatusView.setBackgroundColor(Color.RED)
+                }
+            }
+            runBlocking {
+                launch{
+                    withContext(Dispatchers.IO) {
+                        if(isWebSocketConnected){
+                            webSocketConnection.sendMessage("HEARTBEAT_PHONE")
+                        }else{
+                            Log.d("HeartbeatToWSError","Cannot send heartbeat message to websocket, websocket is disconnected")
+                        }
+                        val timestamp= ((System.currentTimeMillis()))*1000000L
+                        rosManager.publishOnHeartbeatTopic(timestamp)
+                    }
+                }
+            }
+
+            if(rosManager.isConnected()){
+                runOnUiThread{
+                    twistStatusView.text="Ros Connected"
+                    twistStatusView.setBackgroundColor(Color.GREEN)
+                }
+            }else{
+                runOnUiThread{
+                    twistStatusView.text="Ros Disconnected"
+                    twistStatusView.setBackgroundColor(Color.RED)
+                }
+            }
+
+            /*runBlocking { //TODO implementare thread correttamente
+                (1..4).forEach {
+                    launch {
+                        println("$it, delaying in ${Thread.currentThread().name}")
+                        delay(1000)
+                        println("$it, done in ${Thread.currentThread().name}")
+                    }
+                }
+            }*/
+
+            heartbeatLoop(delay)
+        }, delay)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -394,7 +568,7 @@ class MainActivity : AppCompatActivity() {
                             drawLidarData(bleLidarConnection.returnLidarPointList(),bleLidarConnection.currentSpeed,bleLidarConnection.currentDirection)
                             runOnUiThread {
                                 speedView.text=bleLidarConnection.currentSpeed.toString()
-                                directionView.text=bleLidarConnection.currentDirection.toString()
+                                //directionView.text=bleLidarConnection.currentDirection.toString()
                                 headerTextView.text=bleLidarConnection.lastHeader
                             }
 
@@ -420,31 +594,26 @@ class MainActivity : AppCompatActivity() {
             webSocketConnection = object : WebSocketConnection(ESP_ADDRESS, ESP_PORT){
                 //i pacchetti in formato stringa non dovrebbero essere processati
                 override fun processMessage(message:String){
-                    //runOnUiThread {
-                        //headerTextView.text=message
+                    isWebSocketConnected=true
+                    if(message=="connection accepted" || message=="CONNECTION ACCEPTED"){
+                        Log.d("WSEstablished","Connection to master controller established")
+                        startHeartbeatLoop(100L) //TODO controllare se messaggio connessione è ancora attivo, stabilirne uno in ogni caso
+                    }else if("TIME_SYNCHRO1" in message){
+                        timeSyncronization.continueSynchronization(parseTimeSynchronizationMessage(message))
+                    }else if("HEARTBEAT_CONTROLLER" in message){
+                        webSocketConnection.lastHeartbeatReceived=System.currentTimeMillis()
+                    }else if("BRAKE_ON received" in message){
+                        //conferma BRAKE_ON
+                    }else if("COMMAND_RECEIVED" in message){
+                        val parsedMessage=message.split(";")
+                        val command=parsedMessage[1]
+                        val millis=parsedMessage[2].toInt()
 
-                        //parseLidarData(message.toByteArray())
-                        if( message!="connection accepted"){
-
-                           //TODO
-                            Log.d("ASD","ASD $message")
-
-
-                            //parseFixedLidarData(message.toByteArray())
-                            //Log.d("ASD","ASD $currentTime")
-
-                            //drawLidarData(lidarPointArray.toList(), currentSpeed, currentDirection)
-                        }
-
-                        //messaggio di sincronizzazione orologio
-                        if("TIME_SYNCHRO1" in message){
-                            timeSyncronization.continueSynchronization(parseTimeSynchronizationMessage(message))
-                            runOnUiThread {
-                                timeView.text=timeSyncronization.ts.toString()
-                            }
-                            //computeSynchronizeTime(message)
-                        }
-                   // }
+                        rosManager.publishOnCommandFeedbackControllerTopic(command,((millis).toLong()+timeSyncronization.ts)*1000000L)
+                    }else{
+                        //gestire messaggi diversi in base a necessità
+                        Log.d("UnsupportedMsgReceived","Unsupported message received:$message")
+                    }
                 }
 
 
@@ -457,16 +626,27 @@ class MainActivity : AppCompatActivity() {
                     }*/
 
                     if(packetParsed==null){
+                        //se viene ritornato un pacchetto vuoto c'è stato un errore di parsing, loggato nella funzione di parsing
                         return
                     }
+
+
                     currentLidarProbability=computeLidarRiskProbability(packetParsed)
                     lastTimeStamp++
 
+                    if(timeSyncronization.ts!=-1L){
+                        rosManager.publishOnWheelchairTopic(packetParsed, timeSyncronization.ts, 1)
+
+                        if(!packetParsed.isLidarDataDuplicated){
+                            rosManager.publishOnLidarTopic(packetParsed, timeSyncronization.ts)
+                        }
+                    }
 
                     runOnUiThread {
-                        headerTextView.text="H;$currentTime,\$angle,$currentDirection,$currentSpeed,$currentBrakeStatus \n Alarm level: ${computeAlarmLevel(packetParsed!!)} \n"
+                        //headerTextView.text="H;$currentTime,\$angle,$currentDirection,$currentSpeed,$currentBrakeStatus \n Alarm level: ${computeAlarmLevel(packetParsed!!)} \n"
                         speedView.text="Speed: $currentSpeed km/h"
-                        directionView.text="Direction $currentDirection"
+                        timeView.text=packetParsed.time.toString()
+                        //directionView.text="Direction $currentDirection"
                         drawLidarData(lidarPointArray.toList(), currentSpeed, currentDirection)
                     }
 
@@ -663,6 +843,8 @@ class MainActivity : AppCompatActivity() {
     override fun onResume(){
         super.onResume()
 
+        startBackgroundComputeThread()
+
         //after create completes or when the app is reopened we check if bluetooth is enabled and prompt to enable it
         if (!bluetoothAdapter.isEnabled) {
             promptEnableBluetooth()
@@ -675,6 +857,10 @@ class MainActivity : AppCompatActivity() {
         //dato che sono in chiusura app non importa se cerco di chiudere una connessione inesistente
         //TODO bloccare connessione ble?
         webSocketConnection.stopSocket()
+
+        rosManager.disconnect()
+
+        stopBackgroundComputeThread()
 
         super.onDestroy()
     }
@@ -890,6 +1076,8 @@ class MainActivity : AppCompatActivity() {
             }
         }else if(espConnectionType=="WEBSOCKET"){
             runBlocking {
+
+                //websocket
                 launch{
                     withContext(Dispatchers.IO) {
                         webSocketConnection.subscribeToSocketEvents()
@@ -898,6 +1086,23 @@ class MainActivity : AppCompatActivity() {
                         Handler(Looper.getMainLooper()).postDelayed({
                             timeSyncronization.startSynchronization()
                         }, 100)
+                    }
+                }
+
+                //jrosbridge websocket
+                launch{
+                    withContext(Dispatchers.IO) {
+                        if(rosManager.connect()){
+                            runOnUiThread{
+                                twistStatusView.text="Ros Connected"
+                                twistStatusView.setBackgroundColor(Color.GREEN)
+                            }
+                        }else{
+                            runOnUiThread{
+                                twistStatusView.text="Ros Disconnected"
+                                twistStatusView.setBackgroundColor(Color.RED)
+                            }
+                        }
                     }
                 }
             }
