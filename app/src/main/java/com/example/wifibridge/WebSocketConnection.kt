@@ -291,9 +291,17 @@ open class WebSocketConnection(val address:String, val port:String) {
 
         fun parseTimeSynchronizationMessage(message:String):Int{
             var temp=""
-            for(i in 15 until message.length){
-                temp+=message[i].toString()
+            var i=0
+            while(message[i]!=';'){
+                i++
             }
+            for(i in 13 until message.length){
+                if(message[i]!=';'){
+                    temp+=message[i].toString()
+                }
+
+            }
+            Log.d("ASD","ASD timesyncro received: ${temp.toInt()}")
 
             return temp.toInt()
         }

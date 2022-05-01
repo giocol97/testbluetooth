@@ -45,6 +45,37 @@ class CorrectedRosUtilities {
         }
 
         //
+
+        fun toCorrectTwistStamped(msgSpeed:Float,msgSpeedTimestamp:Int,msgAngle:Int,msgAngleTimestamp:Int , ts:Long, direction:Int): CorrectTwistStamped{
+            return toCorrectTwistStamped(msgSpeed,msgSpeedTimestamp,msgAngle.toFloat(),msgAngleTimestamp , ts, direction)
+        }
+
+        fun toCorrectTwistStamped(msgSpeed:Float,msgSpeedTimestamp:Int,msgAngle:Float,msgAngleTimestamp:Int , ts:Long, direction:Int): CorrectTwistStamped{
+            //val timestamp= CorrectTime(((msgAngleTimestamp).toLong()+ts)*1000000L)
+
+            val timestamp= if(msgAngleTimestamp!=0){//utilizzo il timestamp dello sterzo di preferenza, se non c'è uso quello della ruota (in caso di twist su topic solo vel lin)
+                CorrectTime(((msgAngleTimestamp).toLong()+ts)*1000000L)
+            }else{
+                CorrectTime(((msgSpeedTimestamp).toLong()+ts)*1000000L)
+            }
+
+            val header= CorrectHeader(timestamp,"wheel_frame")
+            val speed=msgSpeed/3.6f //convert to metres per second
+
+            var directionAngle=Math.toRadians(msgAngle.toDouble()).toFloat()
+
+
+            if(direction<0){//if direction is backward the angle of movement is inverted //TODO passare la marcia tramite pacchetto per rendere indipendente da arcore
+                directionAngle=-directionAngle + 3.14f
+            }
+
+            val linearVelocity= Vector3(speed.toDouble(), 0.0,0.0) //speed is all directed towards x axis
+            val angularVelocity= Vector3(0.0,0.0,directionAngle.toDouble()) //steering acts in the z axis
+            val twist= Twist(linearVelocity,angularVelocity)
+
+            return CorrectTwistStamped(header, twist)
+        }
+
         fun toCorrectTwistStamped(packet: WebSocketConnection.PacketParsed, ts:Long=0L, currentDirection:Int): CorrectTwistStamped {
             val timestamp= CorrectTime(((packet.time).toLong()+ts)*1000000L)
 

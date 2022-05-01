@@ -1,5 +1,6 @@
 package com.example.wifibridge.common
 
+import android.content.Context
 import android.util.Log
 import com.example.wifibridge.WebSocketConnection
 import com.example.wifibridge.common.correctedRos.CorrectHeader
@@ -9,25 +10,40 @@ import com.example.wifibridge.common.correctedRos.CorrectTwistStamped
 import com.example.wifibridge.common.utilities.CorrectedRosUtilities
 import edu.wpi.rail.jrosbridge.Ros
 import edu.wpi.rail.jrosbridge.Topic
+import android.content.Context.WIFI_SERVICE
 
-//rosbridge connection constants
-private const val ROS_SERVER_ADDRESS="192.168.1.3"
+import android.net.wifi.WifiManager
+import android.text.format.Formatter
+import java.math.BigInteger
+import java.net.InetAddress
+import java.net.UnknownHostException
+import java.nio.ByteOrder
+
+
+//rosbridge connection constants (wifi address for ros can either be .2 or .3 depending on connection order to esp)
+//private const val ROS_SERVER_ADDRESS_1="192.168.1.2"
+//private const val ROS_SERVER_ADDRESS_2="192.168.1.3"
 private const val ROS_SERVER_PORT=9090
 private const val ROS_TRANSFER_TYPE="wheelchair:lidar"//opzioni-> pose - wheelchair - lidar - all, possibile mettere una o più opzioni separate da : senza spazi (ES pose:lidar ), all attiva tutti i topic
+private const val MULTIPLE_WHEELCHAIR_TOPICS=true
+
 
 open class RosConnectionManager {
 
     companion object{
         const val ROSBRIDGE_ACTIVE=true
-
-        //su prototipo AIT diverse funzionalità sono disattivate
-        const val IS_AIT=false
     }
 
     //ROS VARIABLES
     private lateinit var ros: Ros
     private lateinit var poseTopic: Topic
     private lateinit var wheelchairTopic: Topic
+
+    //topic per differenziare timestamp wheelchair
+    private lateinit var wheelchairTopicLin:Topic
+    private lateinit var wheelchairTopicAng:Topic
+
+
     private lateinit var lidarTopic: Topic
     private lateinit var controlTopic: Topic
     private lateinit var heartbeatTopic: Topic
@@ -42,9 +58,16 @@ open class RosConnectionManager {
 
     //TODO gestire riconnessione a rosbridge dopo disconnessione dovuta a possibili problemi wifi o onPause
 
-    fun connect():Boolean {
+    fun connect(currentIp:String):Boolean {
         if(ROSBRIDGE_ACTIVE){
-            ros = Ros(ROS_SERVER_ADDRESS, ROS_SERVER_PORT)
+
+            val serverIp= currentIp/*if(currentIp == ROS_SERVER_ADDRESS_1){
+                ROS_SERVER_ADDRESS_2
+            }else{
+                ROS_SERVER_ADDRESS_1
+            }*/
+
+            ros = Ros(serverIp, ROS_SERVER_PORT)
             if(!ros.connect()){
                 return false
             }
@@ -60,6 +83,14 @@ open class RosConnectionManager {
             if("wheelchair" in topicsSelected || "all" in topicsSelected){
                 wheelchairTopic=Topic(ros,"/wheelchair_motion","geometry_msgs/TwistStamped")
                 wheelchairTopic.advertise()
+
+                if(MULTIPLE_WHEELCHAIR_TOPICS){
+                    wheelchairTopicLin=Topic(ros,"/wheelchair_motion_lin","geometry_msgs/TwistStamped")
+                    wheelchairTopicLin.advertise()
+
+                    wheelchairTopicAng=Topic(ros,"/wheelchair_motion_ang","geometry_msgs/TwistStamped")
+                    wheelchairTopicAng.advertise()
+                }
             }
 
             if("lidar" in topicsSelected || "all" in topicsSelected){
@@ -129,6 +160,19 @@ open class RosConnectionManager {
     fun publishOnWheelchairTopic(packetParsed: WebSocketConnection.PacketParsed, timeSyncronization:Long, direction:Int){
         if(ROSBRIDGE_ACTIVE && ros.isConnected && ::wheelchairTopic.isInitialized) {
             wheelchairTopic.publish(CorrectedRosUtilities.toCorrectTwistStamped(packetParsed,timeSyncronization,direction))
+        }
+    }
+
+    //TODO direction è inserito direttamente all'interno della velocità al momento
+
+    fun publishOnWheelchairTopic(msgSpeed:Float,msgSpeedTimestamp:Int,msgAngle:Float,msgAngleTimestamp:Int , timeSyncronization:Long, direction:Int){
+        if(ROSBRIDGE_ACTIVE && ros.isConnected && ::wheelchairTopic.isInitialized) {
+            wheelchairTopic.publish(CorrectedRosUtilities.toCorrectTwistStamped(msgSpeed,msgSpeedTimestamp,msgAngle,msgAngleTimestamp,timeSyncronization,direction))
+
+            if(MULTIPLE_WHEELCHAIR_TOPICS && ::wheelchairTopicLin.isInitialized && ::wheelchairTopicAng.isInitialized){
+                wheelchairTopicLin.publish(CorrectedRosUtilities.toCorrectTwistStamped(msgSpeed,msgSpeedTimestamp,0,0,timeSyncronization,direction))
+                wheelchairTopicAng.publish(CorrectedRosUtilities.toCorrectTwistStamped(0f,0,msgAngle,msgAngleTimestamp,timeSyncronization,direction))
+            }
         }
     }
 

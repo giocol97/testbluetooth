@@ -69,4 +69,6 @@ dependencies {
     implementation("com.github.haifengl:smile-kotlin:2.6.0")
 
     implementation 'com.github.xiaoxxcool:jrosbridge:develop-SNAPSHOT'
+
+    implementation 'com.github.stealthcopter:AndroidNetworkTools:0.4.5.3'
 }

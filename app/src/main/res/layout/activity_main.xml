@@ -5,8 +5,6 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     tools:context=".MainActivity">
-
-
     <LinearLayout
         android:id="@+id/top_layout"
         android:layout_width="match_parent"
@@ -26,11 +24,21 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp"
-                android:text="Start Connection" />
+                android:text="Start Connection"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/waitDiscoveryView"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Wait for IP discovery"
+                android:visibility="visible" />
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
+                android:layout_weight="1"
                 android:orientation="vertical"
                 android:paddingTop="16dp">
 
@@ -62,7 +70,7 @@
             android:layout_height="100dp"
             android:paddingTop="50px"
             android:text="Header: \n..."
-            tools:visibility="gone" />
+            android:visibility="gone" />
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -91,7 +99,7 @@
         <EditText
             android:id="@+id/commandBox"
             android:layout_width="match_parent"
-            android:layout_height="100dp"
+            android:layout_height="50dp"
             android:ems="10"
             android:hint="Write the command here..."
             android:inputType="text" />
@@ -100,14 +108,15 @@
             android:id="@+id/connectionTypeSwitch"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Off=BLE \ On=Websocket" />
+            android:text="Off=BLE \ On=Websocket"
+            android:visibility="gone" />
 
         <Switch
             android:id="@+id/joystickSwitch"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Off=Radar View On=Joystick"
-            tools:visibility="gone" />
+            android:visibility="gone" />
 
         <Button
             android:id="@+id/commandButton"
@@ -167,92 +176,112 @@
             android:id="@+id/joystickContainer"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            tools:visibility="visible">
-
-            <TableRow
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content">
-
-                <Space
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="0.33" />
-
-                <Button
-                    android:id="@+id/upButton"
-                    android:layout_width="0dp"
-                    android:layout_height="100dp"
-                    android:layout_weight="0.33"
-                    android:text="↑"
-                    android:textSize="34sp" />
-
-                <Space
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="0.33" />
-
-            </TableRow>
-
-            <TableRow
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content">
-
-                <Space
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="0.1" />
-
-                <Button
-                    android:id="@+id/leftButton"
-                    android:layout_width="0dp"
-                    android:layout_height="100dp"
-                    android:layout_weight="0.3"
-                    android:text="←"
-                    android:textSize="34sp" />
-
-                <Button
-                    android:id="@+id/centerButton"
-                    android:layout_width="0dp"
-                    android:layout_height="100dp"
-                    android:layout_weight="0.2"
-                    android:text="□"
-                    android:textSize="34sp" />
-
-                <Button
-                    android:id="@+id/rightButton"
-                    android:layout_width="0dp"
-                    android:layout_height="100dp"
-                    android:layout_weight="0.3"
-                    android:text="→"
-                    android:textSize="34sp" />
-
-                <Space
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="0.1" />
-            </TableRow>
+            android:visibility="visible">
 
             <TableRow
                 android:layout_width="match_parent"
                 android:layout_height="match_parent" >
 
                 <Space
-                    android:layout_width="0dp"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_weight="0.33" />
+                    android:layout_weight="1" />
 
-                <Button
-                    android:id="@+id/downButton"
-                    android:layout_width="0dp"
-                    android:layout_height="100dp"
-                    android:layout_weight="0.33"
-                    android:text="↓"
-                    android:textSize="34sp" />
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <Button
+                        android:id="@+id/buttonGear0"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Gear 0" />
+
+                    <Button
+                        android:id="@+id/buttonGear1"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Gear 1" />
+
+                    <Button
+                        android:id="@+id/buttonGear2"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Gear 2" />
+
+                    <Button
+                        android:id="@+id/buttonGear3"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Gear 3" />
+
+                    <Button
+                        android:id="@+id/buttonGear4"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Gear 4" />
+
+                </LinearLayout>
 
                 <Space
-                    android:layout_width="0dp"
+                    android:layout_width="10dp"
                     android:layout_height="wrap_content"
-                    android:layout_weight="0.33" />
+                    android:layout_weight="1" />
+
+            </TableRow>
+
+            <TableRow
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" >
+
+                <TextView
+                    android:id="@+id/textView"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Steering:" />
+            </TableRow>
+
+            <TableRow
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" >
+
+                <Button
+                    android:id="@+id/buttonSteeringN60"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="-60" />
+
+                <Button
+                    android:id="@+id/buttonSteeringN20"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="-20" />
+
+                <Button
+                    android:id="@+id/buttonSteering0"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="0" />
+
+                <Button
+                    android:id="@+id/buttonSteeringP20"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="20" />
+
+                <Button
+                    android:id="@+id/buttonSteeringP60"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="60" />
             </TableRow>
 
         </TableLayout>
