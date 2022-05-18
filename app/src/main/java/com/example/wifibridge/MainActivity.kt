@@ -40,6 +40,7 @@ import com.stealthcopter.networktools.SubnetDevices
 import com.stealthcopter.networktools.SubnetDevices.OnSubnetDeviceFound
 import com.stealthcopter.networktools.ping.PingNative.ping
 import com.stealthcopter.networktools.subnet.Device
+import kotlinx.android.synthetic.main.activity_main.*
 
 
 //useful android constants
@@ -239,6 +240,10 @@ class MainActivity : AppCompatActivity() {
         findViewById(R.id.waitDiscoveryView)
     }
 
+    private val angleSwitch:Switch by lazy{
+        findViewById(R.id.angleSwitch)
+    }
+
     private lateinit var wifiIP:String
 
     var lastTimeStamp=0L
@@ -253,63 +258,54 @@ class MainActivity : AppCompatActivity() {
     val riskSystem=RiskAssessment(40)
     var currentLidarProbability=-1f
 
+    var lastRosGearSet=0
+    var lastRosTimestamp=0L
+    var lastReceivedSterzo=0f
+    var isControlledByAngle=false
+
+
     var isWebSocketConnected=false
-    lateinit var hotspotReservation:WifiManager.LocalOnlyHotspotReservation
+    //lateinit var hotspotReservation:WifiManager.LocalOnlyHotspotReservation
 
     //RosBridge manager helper class
     private val rosManager: RosConnectionManager = object: RosConnectionManager(){
         override fun processControlMessage(linearVelocity: Float, angularVelocity: Float,period:Float) {
-            /*val vel=linearVelocity*3.6f//ricevo in m/s e invio a controller in km/h
-            //var angle=Math.toDegrees(twistToControlAngle(linearVelocity,angularVelocity).toDouble()).toFloat()//angolo in gradi
 
+            lastRosTimestamp=System.currentTimeMillis()
 
-            val maximumSpeed=10f//in gradi secondo
-            val maximumPeriod=1f//in secondi
-            //val desiredSpeed=((angle-lastAngle)/period)
-            val desiredSpeed=-angularVelocity*180f/Math.PI.toFloat()//velocità in gradi al secondo, negativa per notazione ROS
-
-            val actualSpeed=min(maximumSpeed,abs(desiredSpeed))//protezione contro velocità angolare troppo alta
-
-            if(maximumSpeed>desiredSpeed){
-                Log.d("ControlCommandError","Angular velocity is more than the safe value, cutting to a safe value")
-            }
-
-            val actualPeriod=min(maximumPeriod,period)//protezione contro periodi troppo lunghi
-
-            var newAngle=lastAngle+actualSpeed*actualPeriod*sign(desiredSpeed)
-
-            //angoli calcolati su prototipo AIT per ruotare sul posto TODO calcolare su prototipo klaxon
-            /*if(RosConnectionManager.IS_AIT) {
-                val maximumAngle = 76f
-                val minimumAngle = -76f
-            }else{
-                val maximumAngle = 90f
-                val minimumAngle = -90f
-            }*/
-            val maximumAngle = 76f
-            val minimumAngle = -76f
-
-            //protezione contro angoli richiesti fuori da angoli massimi per ruotare sul posto
-            newAngle=min(maximumAngle,newAngle)
-            newAngle=max(minimumAngle,newAngle)
-
-            lastAngle=newAngle
-
-            if(linearVelocity<=0f || true){//TODO gestire velocità zero
-                webSocketConnection.sendMessage("BRAKE_ON")
-                publishOnCommandFeedbackPhoneTopic("BRAKE_ON",System.currentTimeMillis()*1000000L)
-                newAngle = newAngle.mod(360f)
-                webSocketConnection.sendMessage("STERZO;${newAngle.toInt()+180};")
-                publishOnCommandFeedbackPhoneTopic("STERZO;${newAngle.toInt()+180};",System.currentTimeMillis()*1000000L)
-                return
-            }
-
-            webSocketConnection.sendMessage("CONTROL;${vel.format(4,true)};${newAngle.toInt()};")
-            publishOnCommandFeedbackPhoneTopic("CONTROL;${vel.format(4,true)};${newAngle.toInt()};",System.currentTimeMillis()*1000000L)*/
             val vel=if(linearVelocity>=0f){linearVelocity}else{0f}
+            val targetVel=vel*3.6f
+            val targetAng=Math.toDegrees(angularVelocity.toDouble()).toFloat()
+           // var targetAng=min(Math.toDegrees(angularVelocity.toDouble()).toFloat(),60f)
+           // targetAng=max(targetAng,-60f)
+         //   val targetGear=gearFromSpeed(targetVel)
 
-            webSocketConnection.sendMessage("TWIST;${vel.format(4,true)};${angularVelocity.format(4,true)};")
-            publishOnCommandFeedbackPhoneTopic("TWIST;${linearVelocity.format(4,true)};${angularVelocity.format(4,true)};",System.currentTimeMillis()*1000000L)
+            webSocketConnection.sendMessage("CONTROL;$targetVel;$targetAng;")
+            publishOnCommandFeedbackPhoneTopic("CONTROL;$targetVel;$targetAng;",System.currentTimeMillis()*1000000L)
+            Log.d("ASD","ASD sent command: CONTROL;$targetVel;$targetAng;")
+
+
+            /*if(lastRosGearSet!=targetGear){
+                webSocketConnection.sendMessage("SET_GEAR;$targetGear;")
+                publishOnCommandFeedbackPhoneTopic("SET_GEAR;$targetGear;",System.currentTimeMillis()*1000000L)
+                Log.d("ASD","ASD sent command: SET_GEAR;$targetGear;")
+                lastRosGearSet=targetGear
+            }
+
+            /*if(targetAng>0.5f && !isControlledByAngle){
+                webSocketConnection.sendMessage("STERZO;${(targetAng*0.1f) + lastReceivedSterzo};")
+                publishOnCommandFeedbackPhoneTopic("STERZO;${(targetAng*0.1f) + lastReceivedSterzo};",System.currentTimeMillis()*1000000L)
+                Log.d("ASD","ASD sent command: STERZO;${(targetAng*0.1f) + lastReceivedSterzo};")
+            }*/
+
+            if(isControlledByAngle){
+                webSocketConnection.sendMessage("STERZO;${Math.toDegrees(angularVelocity.toDouble()).toFloat()};")
+                publishOnCommandFeedbackPhoneTopic("STERZO;${Math.toDegrees(angularVelocity.toDouble()).toFloat()};",System.currentTimeMillis()*1000000L)
+                Log.d("ASD","ASD sent command: STERZO;${Math.toDegrees(angularVelocity.toDouble()).toFloat()};")
+            }*/
+
+            //webSocketConnection.sendMessage("TWIST;${vel.format(4,true)};${angularVelocity.format(4,true)};")
+            //publishOnCommandFeedbackPhoneTopic("TWIST;${linearVelocity.format(4,true)};${angularVelocity.format(4,true)};",System.currentTimeMillis()*1000000L)
             Log.d("RosCommandReceived","Ros Twist Command Received: linearVel=$linearVelocity - angularVel=$angularVelocity")
         }
     }
@@ -318,6 +314,34 @@ class MainActivity : AppCompatActivity() {
     private fun Context.hasPermission(permissionType: String): Boolean {
         return ContextCompat.checkSelfPermission(this, permissionType) ==
                 PackageManager.PERMISSION_GRANTED
+    }
+
+
+    private fun gearFromSpeed(speed:Float):Int {
+        // find closest gear
+        val gearSpeeds =  intArrayOf( 0, 2, 3, 4, 6 )
+        var actualSpeed=-1
+
+        if (speed > gearSpeeds[4]){
+            return 4
+        }
+
+        if (speed < gearSpeeds[0]){
+            return 0
+        }
+
+        var minDiff = -1f
+        var closestGear = 0
+
+        for (i in gearSpeeds.indices) {
+            val tempDif = abs(speed - gearSpeeds[i]);
+
+            if (tempDif < minDiff || minDiff == -1f) {
+                minDiff = tempDif
+                closestGear = i
+            }
+        }
+        return closestGear
     }
 
     private fun polarToCanvas(distance:Int,angle:Int,width:Int,height:Int):Pair<Float,Float>{
@@ -597,6 +621,13 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
+
+            if(lastRosTimestamp!=0L && System.currentTimeMillis()-lastRosTimestamp>1000){
+                webSocketConnection.sendMessage("SET_GEAR;0;")
+                rosManager.publishOnCommandFeedbackPhoneTopic("SET_GEAR;0;",System.currentTimeMillis()*1000000L)
+                lastRosGearSet=0
+            }
+
             /*runBlocking { //TODO implementare thread correttamente
                 (1..4).forEach {
                     launch {
@@ -644,11 +675,19 @@ class MainActivity : AppCompatActivity() {
                         msgSpeed*=-1
                     }
 
+                    lastReceivedSterzo=msgAngle
+
+                    runOnUiThread {
+                        speedView.text="Speed: ${msgSpeed/10f} km/h"
+                        timeView.text= (msgAngle).toString()
+
+                    }
+
                     if(timeSyncronization.ts!=-1L && msgSpeedTimestamp!=0 && msgAngleTimestamp!=0) {
                         rosManager.publishOnWheelchairTopic(
                             msgSpeed / 10f,
                             msgSpeedTimestamp,
-                            msgAngle - 180f,
+                            msgAngle,
                             msgAngleTimestamp,
                             timeSyncronization.ts,
                             1
@@ -895,6 +934,11 @@ class MainActivity : AppCompatActivity() {
                 espConnectionType="BLE"
             }
         }
+
+
+        angleSwitch.setOnCheckedChangeListener { _, isChecked ->
+            isControlledByAngle = isChecked
+        }
         joystickSwitch.visibility=View.GONE
         //joystickContainer.visibility=View.GONE
         //radarView.visibility=View.VISIBLE
@@ -1031,7 +1075,7 @@ class MainActivity : AppCompatActivity() {
 
         buttonSteeringN60.setOnClickListener{
             if(espConnectionType=="WEBSOCKET"){
-                sendWSCommand("STERZO;-60;")
+                sendWSCommand("STERZO;-76;")
             }else{
                 Log.d("Errore","Dispositivo non connesso, impossibile mandare il messaggio STERZO")
             }
@@ -1039,7 +1083,7 @@ class MainActivity : AppCompatActivity() {
 
         buttonSteeringN20.setOnClickListener{
             if(espConnectionType=="WEBSOCKET"){
-                sendWSCommand("STERZO;-20;")
+                sendWSCommand("STERZO;-35;")
             }else{
                 Log.d("Errore","Dispositivo non connesso, impossibile mandare il messaggio STERZO")
             }
@@ -1055,7 +1099,7 @@ class MainActivity : AppCompatActivity() {
 
         buttonSteeringP20.setOnClickListener{
             if(espConnectionType=="WEBSOCKET"){
-                sendWSCommand("STERZO;20;")
+                sendWSCommand("STERZO;35;")
             }else{
                 Log.d("Errore","Dispositivo non connesso, impossibile mandare il messaggio STERZO")
             }
@@ -1063,7 +1107,7 @@ class MainActivity : AppCompatActivity() {
 
         buttonSteeringP60.setOnClickListener{
             if(espConnectionType=="WEBSOCKET"){
-                sendWSCommand("STERZO;60;")
+                sendWSCommand("STERZO;76;")
             }else{
                 Log.d("Errore","Dispositivo non connesso, impossibile mandare il messaggio STERZO")
             }

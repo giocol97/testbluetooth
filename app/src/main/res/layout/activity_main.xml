@@ -5,12 +5,14 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     tools:context=".MainActivity">
+
     <LinearLayout
         android:id="@+id/top_layout"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:orientation="vertical"
         app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent">
 
@@ -180,7 +182,7 @@
 
             <TableRow
                 android:layout_width="match_parent"
-                android:layout_height="match_parent" >
+                android:layout_height="match_parent">
 
                 <Space
                     android:layout_width="wrap_content"
@@ -234,7 +236,7 @@
 
             <TableRow
                 android:layout_width="match_parent"
-                android:layout_height="match_parent" >
+                android:layout_height="match_parent">
 
                 <TextView
                     android:id="@+id/textView"
@@ -246,21 +248,21 @@
 
             <TableRow
                 android:layout_width="match_parent"
-                android:layout_height="match_parent" >
+                android:layout_height="match_parent">
 
                 <Button
                     android:id="@+id/buttonSteeringN60"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="-60" />
+                    android:text="-76" />
 
                 <Button
                     android:id="@+id/buttonSteeringN20"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="-20" />
+                    android:text="-35" />
 
                 <Button
                     android:id="@+id/buttonSteering0"
@@ -274,14 +276,29 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="20" />
+                    android:text="35" />
 
                 <Button
                     android:id="@+id/buttonSteeringP60"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="60" />
+                    android:text="76" />
+            </TableRow>
+
+            <TableRow
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent">
+
+                <Switch
+                    android:id="@+id/angleSwitch"
+                    android:layout_width="100dp"
+                    android:layout_height="wrap_content"
+                    android:contentDescription="Angle"
+                    android:text="Angle"
+                    android:visibility="gone"
+                    tools:text="Angle"
+                    tools:visibility="gone" />
             </TableRow>
 
         </TableLayout>

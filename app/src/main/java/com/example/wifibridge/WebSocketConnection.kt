@@ -355,6 +355,9 @@ class WebSocketListener : WebSocketListener() {
         GlobalScope.launch {
             socketEventChannel.send(SocketUpdate(exception = SocketAbortedException()))
         }
+
+        Log.d("ASD","ASD websocket closed $code - $reason")
+
         webSocket.close(WebServicesProvider.NORMAL_CLOSURE_STATUS, null)
         socketEventChannel.close()
     }
